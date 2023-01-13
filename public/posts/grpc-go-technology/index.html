@@ -1,0 +1,1276 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="robots" content="noodp" />
+        <title>基于Go语言的gRPC 使用指北 - Seed blog</title><meta name="Description" content="Welcome to my blog."><meta property="og:title" content="基于Go语言的gRPC 使用指北" />
+<meta property="og:description" content="1. grpc介绍 1.1 什么是grpc 在了解什么是grpc前，需要先知道什么是rpc。所谓的rpc（Remote Procedure Call），即远程过程的调用协议，我们也经常称为进程间通信协议，它可以让调用远程的函数像调用本地函数一样简单方便。
+微服务和云原生架构出现后，我们构建一个系统时，各个业务功能都被拆分成了不同的服务模块，我们称之为微服务。而不同微服务间需要进行访问或者相互调用，便需要我们在不同微服务间定义统一的通信协议，构建一套进程间（或服务间）的通信技术来连接这些微服务。
+我们常用的HTTP协议本身也是一种rpc协议，另外常见的rpc协议还有facebook的thrift和google的grpc，下面章节也会对比下这两种常见的协议和grpc的差别。
+grpc是google于2015年开源的rpc框架，它具备标准化、可通用和跨平台的特点。这些特点使得不同微服务间可以方便的进行调用外，还支持可拓展的负载均衡、链路跟踪、健康检查等特性。而底层的通信，grpc采用的是HTTP/2来进行，性能和效率上能够得到充分的发挥。grpc也加入了CNCF（云原生计算基金会），逐渐的也成为了主流的社区上rpc框架。
+grpc作为一门框架或者说协议，不同的编程语言（java、c&#43;&#43;、python等）都可以基于这套协议标准进行实现，而grpc-go就是grpc在go语言下的实现，本文后面的所有例子也会采用它来做示例和讲解。
+1.2 grpc与protocol buffers的关系 微服务间通信时，需要依赖统一的通信协议。这里我们暂且将主调方称为客户端，被调方称为服务端。
+服务端需要先定义服务接口，这种服务接口的描述语言，我们便称之为接口定义语言（interface definition language，IDL），而protocol buffers便是grpc所使用的接口定义语言。
+protocol buffers是一种语言中立、平台无关，用于实现结构化数据序列化的可扩展机制。根据该机制，服务接口将会定义一个文件扩展名为.proto的文件。如何使用protocol buffers不是本文的重点，具体可以参考官网 。
+这里提供一个grpc官网给出的一个proto文件示例：
+// The greeting service definition. service Greeter { // Sends a greeting rpc SayHello (HelloRequest) returns (HelloReply) {} } // The request message containing the user&#39;s name. message HelloRequest { string name = 1; } // The response message containing the greetings message HelloReply { string message = 1; } 我们通过proto文件定义好服务接口后，便需要根据这个定义生成服务端代码，我们称被生成的服务端代码为服务端骨架（skeleton）。" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://seedzz.abc/posts/grpc-go-technology/" /><meta property="article:section" content="posts" />
+<meta property="article:published_time" content="2022-07-03T04:27:56+08:00" />
+<meta property="article:modified_time" content="2022-07-03T04:27:56+08:00" /><meta property="og:site_name" content="Seed&#39;s blog" />
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="基于Go语言的gRPC 使用指北"/>
+<meta name="twitter:description" content="1. grpc介绍 1.1 什么是grpc 在了解什么是grpc前，需要先知道什么是rpc。所谓的rpc（Remote Procedure Call），即远程过程的调用协议，我们也经常称为进程间通信协议，它可以让调用远程的函数像调用本地函数一样简单方便。
+微服务和云原生架构出现后，我们构建一个系统时，各个业务功能都被拆分成了不同的服务模块，我们称之为微服务。而不同微服务间需要进行访问或者相互调用，便需要我们在不同微服务间定义统一的通信协议，构建一套进程间（或服务间）的通信技术来连接这些微服务。
+我们常用的HTTP协议本身也是一种rpc协议，另外常见的rpc协议还有facebook的thrift和google的grpc，下面章节也会对比下这两种常见的协议和grpc的差别。
+grpc是google于2015年开源的rpc框架，它具备标准化、可通用和跨平台的特点。这些特点使得不同微服务间可以方便的进行调用外，还支持可拓展的负载均衡、链路跟踪、健康检查等特性。而底层的通信，grpc采用的是HTTP/2来进行，性能和效率上能够得到充分的发挥。grpc也加入了CNCF（云原生计算基金会），逐渐的也成为了主流的社区上rpc框架。
+grpc作为一门框架或者说协议，不同的编程语言（java、c&#43;&#43;、python等）都可以基于这套协议标准进行实现，而grpc-go就是grpc在go语言下的实现，本文后面的所有例子也会采用它来做示例和讲解。
+1.2 grpc与protocol buffers的关系 微服务间通信时，需要依赖统一的通信协议。这里我们暂且将主调方称为客户端，被调方称为服务端。
+服务端需要先定义服务接口，这种服务接口的描述语言，我们便称之为接口定义语言（interface definition language，IDL），而protocol buffers便是grpc所使用的接口定义语言。
+protocol buffers是一种语言中立、平台无关，用于实现结构化数据序列化的可扩展机制。根据该机制，服务接口将会定义一个文件扩展名为.proto的文件。如何使用protocol buffers不是本文的重点，具体可以参考官网 。
+这里提供一个grpc官网给出的一个proto文件示例：
+// The greeting service definition. service Greeter { // Sends a greeting rpc SayHello (HelloRequest) returns (HelloReply) {} } // The request message containing the user&#39;s name. message HelloRequest { string name = 1; } // The response message containing the greetings message HelloReply { string message = 1; } 我们通过proto文件定义好服务接口后，便需要根据这个定义生成服务端代码，我们称被生成的服务端代码为服务端骨架（skeleton）。"/>
+<meta name="application-name" content="My cool site">
+<meta name="apple-mobile-web-app-title" content="My cool site"><meta name="theme-color" content="#ffffff"><meta name="msapplication-TileColor" content="#da532c"><link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"><link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5"><link rel="manifest" href="/site.webmanifest"><link rel="canonical" href="https://seedzz.abc/posts/grpc-go-technology/" /><link rel="prev" href="https://seedzz.abc/posts/go-context/" /><link rel="next" href="https://seedzz.abc/posts/go-interface/" /><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/normalize.css@8.0.1/normalize.min.css"><link rel="stylesheet" href="/css/style.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.1.1/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/animate.css@4.1.1/animate.min.css"><script type="application/ld+json">
+    {
+        "@context": "http://schema.org",
+        "@type": "BlogPosting",
+        "headline": "基于Go语言的gRPC 使用指北",
+        "inLanguage": "en",
+        "mainEntityOfPage": {
+            "@type": "WebPage",
+            "@id": "https:\/\/seedzz.abc\/posts\/grpc-go-technology\/"
+        },"genre": "posts","keywords": "go, grpc, grpc-go","wordcount":  2076 ,
+        "url": "https:\/\/seedzz.abc\/posts\/grpc-go-technology\/","datePublished": "2022-07-03T04:27:56+08:00","dateModified": "2022-07-03T04:27:56+08:00","publisher": {
+            "@type": "Organization",
+            "name": ""},"author": {
+                "@type": "Person",
+                "name": "Seed"
+            },"description": ""
+    }
+    </script></head>
+    <body data-header-desktop="fixed" data-header-mobile="auto"><script type="text/javascript">(window.localStorage && localStorage.getItem('theme') ? localStorage.getItem('theme') === 'dark' : ('auto' === 'auto' ? window.matchMedia('(prefers-color-scheme: dark)').matches : 'auto' === 'dark')) && document.body.setAttribute('theme', 'dark');</script>
+
+        <div id="mask"></div><div class="wrapper"><header class="desktop" id="header-desktop">
+    <div class="header-wrapper">
+        <div class="header-title">
+            <a href="/" title="Seed blog">Seed</a>
+        </div>
+        <div class="menu">
+            <div class="menu-inner"><a class="menu-item" href="/posts" title="all my blogs"> Posts </a><a class="menu-item" href="/tags/"> Tags </a><a class="menu-item" href="/categories/"> Categories </a><span class="menu-item delimiter"></span><a href="javascript:void(0);" class="menu-item theme-switch" title="Switch Theme">
+                    <i class="fas fa-adjust fa-fw" aria-hidden="true"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+</header><header class="mobile" id="header-mobile">
+    <div class="header-container">
+        <div class="header-wrapper">
+            <div class="header-title">
+                <a href="/" title="Seed blog">Seed</a>
+            </div>
+            <div class="menu-toggle" id="menu-toggle-mobile">
+                <span></span><span></span><span></span>
+            </div>
+        </div>
+        <div class="menu" id="menu-mobile"><a class="menu-item" href="/posts" title="all my blogs">Posts</a><a class="menu-item" href="/tags/" title="">Tags</a><a class="menu-item" href="/categories/" title="">Categories</a><a href="javascript:void(0);" class="menu-item theme-switch" title="Switch Theme">
+                <i class="fas fa-adjust fa-fw" aria-hidden="true"></i>
+            </a></div>
+    </div>
+</header><main class="main">
+                <div class="container"><div class="toc" id="toc-auto">
+            <h2 class="toc-title">Contents</h2>
+            <div class="toc-content" id="toc-content-auto"></div>
+        </div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">基于Go语言的gRPC 使用指北</h1><div class="post-meta">
+            <div class="post-meta-line"><span class="post-author"><a href="/" title="Author" rel=" author" class="author"><i class="fas fa-user-circle fa-fw" aria-hidden="true"></i>Seed</a>
+</span>&nbsp;<span class="post-category">included in <a href="/categories/grpc/"><i class="far fa-folder fa-fw" aria-hidden="true"></i>grpc</a></span></div>
+            <div class="post-meta-line"><i class="far fa-calendar-alt fa-fw" aria-hidden="true"></i>&nbsp;<time datetime="2022-07-03">2022-07-03</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden="true"></i>&nbsp;2076 words&nbsp;
+                <i class="far fa-clock fa-fw" aria-hidden="true"></i>&nbsp;10 minutes&nbsp;</div>
+        </div><div class="details toc" id="toc-static"  data-kept="">
+                <div class="details-summary toc-title">
+                    <span>Contents</span>
+                    <span><i class="details-icon fas fa-angle-right" aria-hidden="true"></i></span>
+                </div>
+                <div class="details-content toc-content" id="toc-content-static"><nav id="TableOfContents">
+  <ul>
+    <li><a href="#1-grpc介绍">1. grpc介绍</a>
+      <ul>
+        <li><a href="#11-什么是grpc">1.1 什么是grpc</a></li>
+        <li><a href="#12-grpc与protocol-buffers的关系">1.2 grpc与protocol buffers的关系</a></li>
+        <li><a href="#13-与其他rpc技术的对比">1.3 与其他rpc技术的对比</a></li>
+        <li><a href="#14-小结">1.4 小结</a></li>
+      </ul>
+    </li>
+    <li><a href="#2-基于go语言实现一个简单grpc服务端和客户端">2. 基于go语言实现一个简单grpc服务端和客户端</a>
+      <ul>
+        <li><a href="#21-前置准备">2.1 前置准备</a></li>
+        <li><a href="#22-服务接口定义">2.2 服务接口定义</a></li>
+        <li><a href="#23-服务端实现">2.3 服务端实现</a></li>
+        <li><a href="#24-客户端实现">2.4 客户端实现</a></li>
+        <li><a href="#25-运行">2.5 运行</a></li>
+      </ul>
+    </li>
+    <li><a href="#3-grpc的通信模式">3. grpc的通信模式</a>
+      <ul>
+        <li><a href="#31-一元rpc模式">3.1 一元RPC模式</a></li>
+        <li><a href="#32-服务器端流rpc模式">3.2 服务器端流RPC模式</a></li>
+        <li><a href="#33-客户端流grpc模式">3.3 客户端流GRPC模式</a></li>
+        <li><a href="#34-双向流rpc模式">3.4 双向流RPC模式</a></li>
+      </ul>
+    </li>
+    <li><a href="#4-grpc的高阶使用">4. grpc的高阶使用</a>
+      <ul>
+        <li><a href="#41-负载均衡">4.1 负载均衡</a></li>
+        <li><a href="#42-拦截器">4.2 拦截器</a></li>
+        <li><a href="#43-grpc与http">4.3 grpc与http</a></li>
+        <li><a href="#44-prometheus集成">4.4 Prometheus集成</a></li>
+      </ul>
+    </li>
+    <li><a href="#5-总结">5. 总结</a></li>
+  </ul>
+</nav></div>
+            </div><div class="content" id="content"><h2 id="1-grpc介绍">1. grpc介绍</h2>
+<h3 id="11-什么是grpc">1.1 什么是grpc</h3>
+<p>在了解什么是grpc前，需要先知道什么是rpc。所谓的rpc（Remote Procedure Call），即远程过程的调用协议，我们也经常称为进程间通信协议，它可以让调用远程的函数像调用本地函数一样简单方便。</p>
+<p>微服务和云原生架构出现后，我们构建一个系统时，各个业务功能都被拆分成了不同的服务模块，我们称之为微服务。而不同微服务间需要进行访问或者相互调用，便需要我们在不同微服务间定义统一的通信协议，构建一套进程间（或服务间）的通信技术来连接这些微服务。</p>
+<p>我们常用的HTTP协议本身也是一种rpc协议，另外常见的rpc协议还有facebook的thrift和google的grpc，下面章节也会对比下这两种常见的协议和grpc的差别。</p>
+<p>grpc是google于2015年开源的rpc框架，它具备标准化、可通用和跨平台的特点。这些特点使得不同微服务间可以方便的进行调用外，还支持可拓展的负载均衡、链路跟踪、健康检查等特性。而底层的通信，grpc采用的是HTTP/2来进行，性能和效率上能够得到充分的发挥。grpc也加入了CNCF（云原生计算基金会），逐渐的也成为了主流的社区上rpc框架。</p>
+<p><img class="lazyload" src="/svg/loading.min.svg"
+    data-src="/posts/grpc-go-technology/landing-2.png"
+    data-srcset="/posts/grpc-go-technology/landing-2.png, /posts/grpc-go-technology/landing-2.png 1.5x, /posts/grpc-go-technology/landing-2.png 2x" data-sizes="auto"
+    alt="/posts/grpc-go-technology/landing-2.png" title="/posts/grpc-go-technology/landing-2.png" width="552"  height="327"  /></p>
+<p>grpc作为一门框架或者说协议，不同的编程语言（java、c++、python等）都可以基于这套协议标准进行实现，而grpc-go就是grpc在go语言下的实现，本文后面的所有例子也会采用它来做示例和讲解。</p>
+<h3 id="12-grpc与protocol-buffers的关系">1.2 grpc与protocol buffers的关系</h3>
+<p>微服务间通信时，需要依赖统一的通信协议。这里我们暂且将主调方称为客户端，被调方称为服务端。</p>
+<p>服务端需要先定义服务接口，这种服务接口的描述语言，我们便称之为<strong>接口定义语言</strong>（interface definition language，IDL），而protocol buffers便是grpc所使用的接口定义语言。</p>
+<p>protocol buffers是一种语言中立、平台无关，用于实现结构化数据序列化的可扩展机制。根据该机制，服务接口将会定义一个文件扩展名为.proto的文件。如何使用protocol buffers不是本文的重点，具体可以参考<a href="https://developers.google.com/protocol-buffers" target="_blank" rel="noopener noreffer">官网</a>
+。</p>
+<p>这里提供一个grpc官网给出的一个proto文件示例：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-protobuf" data-lang="protobuf"><span class="line"><span class="cl"><span class="c1">// The greeting service definition.
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">service</span> <span class="n">Greeter</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="c1">// Sends a greeting
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>  <span class="k">rpc</span> <span class="n">SayHello</span> <span class="p">(</span><span class="n">HelloRequest</span><span class="p">)</span> <span class="k">returns</span> <span class="p">(</span><span class="n">HelloReply</span><span class="p">)</span> <span class="p">{}</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="c1">// The request message containing the user&#39;s name.
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">message</span> <span class="nc">HelloRequest</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="kt">string</span> <span class="n">name</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="c1">// The response message containing the greetings
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">message</span> <span class="nc">HelloReply</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="kt">string</span> <span class="kd">message</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span></code></pre></div><p>我们通过proto文件定义好服务接口后，便需要根据这个定义生成服务端代码，我们称被生成的服务端代码为<strong>服务端骨架</strong>（skeleton）。</p>
+<p>另一方面，还需要根据proto文件的服务接口定义生成客户端代码，这份代码我们称之为桩代码或者存根（stub）。有了桩代码后，客户端便可以像调用本地函数一样调用远程服务端的函数了。</p>
+<p><img class="lazyload" src="/svg/loading.min.svg"
+    data-src="/posts/grpc-go-technology/grpc.jpg"
+    data-srcset="/posts/grpc-go-technology/grpc.jpg, /posts/grpc-go-technology/grpc.jpg 1.5x, /posts/grpc-go-technology/grpc.jpg 2x" data-sizes="auto"
+    alt="/posts/grpc-go-technology/grpc.jpg" title="grpc and protocol buffers" width="802"  height="348"  /></p>
+<p>Protocol buffers官方支持常用语言的代码生成，如go、c++、java、python等，可以查看这个<a href="https://developers.google.com/protocol-buffers/docs/tutorials" target="_blank" rel="noopener noreffer">文档</a>
+。如果官方没有提供，github上也有一些第三方开源库提供支持。</p>
+<h3 id="13-与其他rpc技术的对比">1.3 与其他rpc技术的对比</h3>
+<h4 id="131-http">1.3.1 HTTP</h4>
+<p>HTTP协议是我们日常开发中使用的最广的进程间通信协议，可以使用JSON、XML等作为传输的数据定义，结合REST风格搭建出一套简单易用的微服务系统。</p>
+<p>而随着微服务的数量激增，网络结构越发复杂后，这种通信协议便会出现一些局限性了。</p>
+<p><strong>它基于文本的低效消息协议</strong><br>
+HTTP的双方在进行通信时，采用的是文本的传输协议，无论是JSON还是XML，这都是方便了人类可读，使用简单。而对于机器来说，这是一种相对低效的通信协议。</p>
+<p><strong>程序间缺乏强类型接口</strong><br>
+现如今，微服务大多采用不同的语言进行搭建。我们在定义服务接口时，经常使用约定的方式，或者借助一些服务定义技术（如OpenAPI/Swagger等）来进行描述，各个程序间基于这套描述来进行通信。</p>
+<p>这种无法对服务接口进行明确定义和强类型限制的服务通信方式，会让服务间十分缺乏安全感。</p>
+<h4 id="132-thrift">1.3.2 Thrift</h4>
+<p>thrift也是与grpc类似的rpc框架，由facebook开发，后面捐赠给了apache基金会。thrift同样有自己的接口定义语言，也需要生成对应的服务端和客户端代码，也意味着它也可以实现跨平台的通信。</p>
+<p>但是两者还是有一些区别：</p>
+<ol>
+<li>在<strong>传输性能</strong>方面会弱于grpc。grpc是基于HTTP/2实现，传输效率高，且能支持像流这样的消息格式。</li>
+<li>第一点提到grpc支持流方式传输，不仅如此，grpc支持服务端和客户端双向流</li>
+<li>从社区活跃角度看，加入CNCF后的grpc势头更高，社区资源也相当丰富</li>
+</ol>
+<h3 id="14-小结">1.4 小结</h3>
+<p>上面对grpc做了基本的介绍，本小接来总结下，我们总结下grpc存在的优势。</p>
+<ul>
+<li><strong>高效的进程间通信方式</strong>。基于HTTP/2设计与实现的grpc，天然的具备高效的通信方式。</li>
+<li><strong>服务接口定义简单优雅</strong>。基于protocol buffers的IDL来定义grpc服务，清晰明了，且具备多语言和强类型定义，服务间开发更加稳定。</li>
+<li>支持<strong>双工流</strong>。grpc支持客户端和服务器端流传输，在服务定义中原生定义，使得流服务开发更加简便高效。</li>
+<li><strong>扩展支持丰富</strong>。grpc还支持了丰富扩展，基于grpc协议，可以自行封装负载均衡、拦截器、认证加密等扩展功能。</li>
+<li><strong>与云原生系统结合更加紧密</strong>。由于grpc加入了CNCF，该组织下的很多项目也都支持grpc作为通信协议（如Envoy），也可以使用prometheus来监控grpc服务。</li>
+</ul>
+<h2 id="2-基于go语言实现一个简单grpc服务端和客户端">2. 基于go语言实现一个简单grpc服务端和客户端</h2>
+<p>这一章节，我们将采用go语言来实现一个用户服务，并提供用户信息查询的功能。同时我们同样会采用go语言来实现一个客户端，完成对该用户服务的调用，即查询用户的信息。</p>
+<p>需要说明的是，由于笔者熟悉的是go语言开发，因此在实现客户端和服务端上均采用了go语言，熟悉java的，也可以采用java实现客户端，做到真正的跨语言调用。</p>
+<p><img class="lazyload" src="/svg/loading.min.svg"
+    data-src="/posts/grpc-go-technology/example1.jpg"
+    data-srcset="/posts/grpc-go-technology/example1.jpg, /posts/grpc-go-technology/example1.jpg 1.5x, /posts/grpc-go-technology/example1.jpg 2x" data-sizes="auto"
+    alt="/posts/grpc-go-technology/example1.jpg" title="simple example" width="564"  height="226"  /></p>
+<h3 id="21-前置准备">2.1 前置准备</h3>
+<p>在开始项目前，需要先将环境准备好</p>
+<ul>
+<li>go，建议1.15以上，即默认开启go module功能</li>
+<li>protoc，可以参考protocol buffers官网文档进行安装</li>
+<li>protoc-gen-go，为proto文件编译为go语言需要的插件</li>
+</ul>
+<pre tabindex="0"><code>$ go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
+</code></pre><ul>
+<li>protoc-gen-go-grpc，编译proto文件中的grpc服务的插件</li>
+</ul>
+<pre tabindex="0"><code>$ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
+</code></pre><p>我们需要先创建一个example的项目目录，在该目录下面接着创建如下几个目录：</p>
+<ul>
+<li>userservice目录，用来存放服务端的源码</li>
+<li>userclient目录，用来存放客户端的源码</li>
+<li>user目录，用来存放proto文件和生成的go语言桩代码</li>
+</ul>
+<p>目录结构如下：</p>
+<pre tabindex="0"><code>example
+  -- userservice
+  -- userclient
+  -- user
+</code></pre><p>接下来在example根目录下，执行如下指令，完成go module初始化</p>
+<pre tabindex="0"><code>$ go mod init example
+</code></pre><h3 id="22-服务接口定义">2.2 服务接口定义</h3>
+<p>完成以上准备工作后，即可在user目录下创建user.proto文件，用来定义服务的接口，文件内容如下</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-protobuf" data-lang="protobuf"><span class="line"><span class="cl"><span class="n">syntax</span> <span class="o">=</span> <span class="s">&#34;proto3&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kn">package</span> <span class="nn">user</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="k">option</span> <span class="n">go_package</span> <span class="o">=</span> <span class="s">&#34;example/user&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kd">service</span> <span class="n">UserService</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="k">rpc</span> <span class="n">queryUsers</span><span class="p">(</span><span class="n">UserRequest</span><span class="p">)</span> <span class="k">returns</span> <span class="p">(</span><span class="n">UsersResponse</span><span class="p">)</span> <span class="p">{};</span> <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kd">message</span> <span class="nc">UserRequest</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="kt">string</span> <span class="n">user_name</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kd">message</span> <span class="nc">UsersResponse</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="kt">int32</span> <span class="n">code</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="kt">string</span> <span class="n">msg</span> <span class="o">=</span> <span class="mi">2</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="k">repeated</span> <span class="n">User</span> <span class="n">users</span><span class="o">=</span> <span class="mi">3</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kd">message</span> <span class="nc">User</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="kt">int32</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="kt">string</span> <span class="n">name</span> <span class="o">=</span> <span class="mi">2</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="kt">int32</span> <span class="n">age</span> <span class="o">=</span> <span class="mi">3</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="kt">int32</span> <span class="n">gender</span> <span class="o">=</span> <span class="mi">4</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span></code></pre></div><p>这里我们定义了一个UserService的服务，该服务中包含一个方法queryUsers。同时我们定义了一个请求的结构（UserRequest）、响应的结构（UsersResponse）和一个用户结构（User）。</p>
+<p>接下来我们便可以生成桩代码了</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">protoc -I<span class="o">=</span>. <span class="se">\ </span>   ①
+</span></span><span class="line"><span class="cl">--go_out<span class="o">=</span>. <span class="se">\ </span>    ②
+</span></span><span class="line"><span class="cl">--go_opt<span class="o">=</span><span class="nv">paths</span><span class="o">=</span>source_relative <span class="se">\ </span>   ③
+</span></span><span class="line"><span class="cl">--go-grpc_out<span class="o">=</span>. <span class="se">\ </span>    ④
+</span></span><span class="line"><span class="cl">--go-grpc_opt<span class="o">=</span><span class="nv">paths</span><span class="o">=</span>source_relative <span class="se">\ </span>   ⑤
+</span></span><span class="line"><span class="cl">--go-grpc_opt<span class="o">=</span><span class="nv">require_unimplemented_servers</span><span class="o">=</span><span class="nb">false</span> <span class="se">\ </span>   ⑥
+</span></span><span class="line"><span class="cl">./user/user.proto   
+</span></span></code></pre></div><ul>
+<li>①，-I 用于指定依赖的proto文件所在的路径。如果有依赖其他的proto文件，可以指定多个路径</li>
+<li>②，说明桩代码生成的路径，此处配置代表相对当前路径来生成桩代码</li>
+<li>③，桩代码生成的一些额外配置，此处说明生成的目录根据proto文件所在的路径生成</li>
+<li>④，说明grpc桩代码的生成路径，没有配置的话默认是不会生成grpc中service的桩代码的</li>
+<li>⑤，同③，即grpc桩代码生成的路径根据proto文件所在的目录生成</li>
+<li>⑥，说明是否需要兼容生成不实现服务端骨架代码的结构</li>
+</ul>
+<p>执行后，生成的文件的目录结构如下</p>
+<pre tabindex="0"><code>example
+  -- userservice
+  -- userclient
+  -- user
+    -- user_grpc.pb.go
+    -- user.pb.go
+    -- user.pb
+</code></pre><p>注：<strong>关于protoc指令中③、⑤和⑥，读者可以尝试删除后，看看目录的差别和服务端骨架实现的差异。</strong></p>
+<h3 id="23-服务端实现">2.3 服务端实现</h3>
+<p>这一步，我们要来实现proto文件中定义的UserService服务。protoc生成的go语言骨架代码时，会为每个service生成对应的接口，名字为<strong>XXXServer</strong>，其中XXX即为service的名字。</p>
+<p>在我们这里即为</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">UserServiceServer</span> <span class="kd">interface</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nf">QueryUsers</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="o">*</span><span class="nx">UserRequest</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">UsersResponse</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>值得注意的是，对于go语言，生成方法定义中，首个参数会是个context，目的是便于做超时和取消控制。</p>
+<p>接下来就来实现该接口，完成我们的业务逻辑，在userservice下创建service.go文件</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;context&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;errors&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">pb</span> <span class="s">&#34;example/user&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;log&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;net&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;google.golang.org/grpc&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">var</span> <span class="nx">users</span> <span class="p">=</span> <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="o">*</span><span class="nx">pb</span><span class="p">.</span><span class="nx">User</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;Jerry&#34;</span><span class="p">:</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">Id</span><span class="p">:</span>     <span class="mi">1</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">Name</span><span class="p">:</span>   <span class="s">&#34;Jerry&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">Age</span><span class="p">:</span>    <span class="mi">21</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">Gender</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="p">},</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;Jack&#34;</span><span class="p">:</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">Id</span><span class="p">:</span>     <span class="mi">2</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">Name</span><span class="p">:</span>   <span class="s">&#34;Jack&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">Age</span><span class="p">:</span>    <span class="mi">30</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">Gender</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="p">},</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">UserService</span> <span class="kd">struct</span><span class="p">{}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">svc</span> <span class="nx">UserService</span><span class="p">)</span> <span class="nf">QueryUsers</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="nx">userReq</span> <span class="o">*</span><span class="nx">pb</span><span class="p">.</span><span class="nx">UserRequest</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">pb</span><span class="p">.</span><span class="nx">UsersResponse</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">u</span><span class="p">,</span> <span class="nx">ok</span> <span class="o">:=</span> <span class="nx">users</span><span class="p">[</span><span class="nx">userReq</span><span class="p">.</span><span class="nx">UserName</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="p">!</span><span class="nx">ok</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="s">&#34;user not found&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">resp</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">pb</span><span class="p">.</span><span class="nx">UsersResponse</span><span class="p">{</span>	
+</span></span><span class="line"><span class="cl">		<span class="nx">Code</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">Users</span><span class="p">:</span> <span class="p">[]</span><span class="o">*</span><span class="nx">pb</span><span class="p">.</span><span class="nx">User</span><span class="p">{</span><span class="nx">u</span><span class="p">},</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">resp</span><span class="p">,</span> <span class="kc">nil</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>完成上述业务逻辑实现后，便可以实现grpc服务的注册和监听。</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">s</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">NewServer</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">pb</span><span class="p">.</span><span class="nf">RegisterUserServiceServer</span><span class="p">(</span><span class="nx">s</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">UserService</span><span class="p">{})</span> 
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;start listen user service port:%d&#34;</span><span class="p">,</span> <span class="mi">10000</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">ls</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">net</span><span class="p">.</span><span class="nf">Listen</span><span class="p">(</span><span class="s">&#34;tcp&#34;</span><span class="p">,</span> <span class="s">&#34;127.0.0.1:10000&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="k">return</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">s</span><span class="p">.</span><span class="nf">Serve</span><span class="p">(</span><span class="nx">ls</span><span class="p">);</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;user service serve error:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>关键步骤就是<code>pb.RegisterUserServiceServer()</code>，通过它将我们业务实现注册到服务中。至此完成了我们服务端的代码实现。</p>
+<h3 id="24-客户端实现">2.4 客户端实现</h3>
+<p>客户端的实现也比较简单，如下所示：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;context&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;log&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;time&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">pb</span> <span class="s">&#34;example/user&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;google.golang.org/grpc&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;google.golang.org/grpc/credentials/insecure&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">conn</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">Dial</span><span class="p">(</span><span class="s">&#34;127.0.0.1:10000&#34;</span><span class="p">,</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">WithTransportCredentials</span><span class="p">(</span><span class="nx">insecure</span><span class="p">.</span><span class="nf">NewCredentials</span><span class="p">()))</span> <span class="err">①</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="k">return</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">	<span class="k">defer</span> <span class="nx">conn</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">userSvcClient</span> <span class="o">:=</span> <span class="nx">pb</span><span class="p">.</span><span class="nf">NewUserServiceClient</span><span class="p">(</span><span class="nx">conn</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span> <span class="mi">100</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Millisecond</span><span class="p">)</span> 
+</span></span><span class="line"><span class="cl">	<span class="k">defer</span> <span class="nf">cancel</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">userReq</span> <span class="o">:=</span> <span class="nx">pb</span><span class="p">.</span><span class="nx">UserRequest</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">UserName</span><span class="p">:</span> <span class="s">&#34;Jack&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">resp</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">userSvcClient</span><span class="p">.</span><span class="nf">QueryUsers</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">userReq</span><span class="p">)</span> <span class="err">②</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;query user fail:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="k">return</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;%v&#34;</span><span class="p">,</span> <span class="nx">resp</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><ul>
+<li>其中①指定了连接的相关配置，由于我们本地不采用SSL的方式连接服务端，因此需要指定<code>grpc.WithTransportCredentials(insecure.NewCredentials())</code>，表明不使用SSL通道。</li>
+<li>②调用查询用户方法，将会返回用户信息的响应数据。</li>
+</ul>
+<p>至此完成了客户端的开发，接下来便可以启动服务，完成客户端与服务端对话。</p>
+<h3 id="25-运行">2.5 运行</h3>
+<p>首先启动用户服务</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">$ go run userservice/service.go
+</span></span><span class="line"><span class="cl">2022/11/02 12:58:24 start listen user service port:10000
+</span></span></code></pre></div><p>接下来则启动客户端，发起对服务的请求。</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">$ go run userclient/client.go
+</span></span></code></pre></div><h2 id="3-grpc的通信模式">3. grpc的通信模式</h2>
+<p>通过前两个章节，我们对grpc有了初步的认识，这一节我们将讲述grcp中不同的通信模式。前面提到，grpc因为采用HTTP/2实现的原因，也天然的支持流模式，在本节也将会学习如何使用grpc的流模式。</p>
+<h3 id="31-一元rpc模式">3.1 一元RPC模式</h3>
+<p>一元（Unary）rpc模式，也叫简单rpc模式，是我们使用的最广泛的rpc模式。我们之前的案例中便属于这种rpc模式，这里也就不再举例子。</p>
+<p>一元模式下，客户端发送单个请求到服务端，服务端也响应单个请求给客户端。这种一来一回的模式非常容易实现，也适用于大多数进程间通信。</p>
+<h3 id="32-服务器端流rpc模式">3.2 服务器端流RPC模式</h3>
+<p>服务器端流（server streaming）rpc模式，即客户端发送请求给服务端后，服务端会响应一个序列，这种多个响应组成的序列也被称为<strong>流</strong>。客户端则可以一直读取流中的数据，直到获取到流结束的标志为止。</p>
+<p><img class="lazyload" src="/svg/loading.min.svg"
+    data-src="/posts/grpc-go-technology/server_stream.jpg"
+    data-srcset="/posts/grpc-go-technology/server_stream.jpg, /posts/grpc-go-technology/server_stream.jpg 1.5x, /posts/grpc-go-technology/server_stream.jpg 2x" data-sizes="auto"
+    alt="/posts/grpc-go-technology/server_stream.jpg" title="server_stream_rpc" width="651"  height="239"  /></p>
+<p>接下来通过一个例子来了解下这种rpc模式。</p>
+<p>创建服务定义如下</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-protobuf" data-lang="protobuf"><span class="line"><span class="cl"><span class="n">syntax</span> <span class="o">=</span> <span class="s">&#34;proto3&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kn">package</span> <span class="nn">order</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="k">option</span> <span class="n">go_package</span> <span class="o">=</span> <span class="s">&#34;example/order&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="k">import</span> <span class="s">&#34;google/protobuf/wrappers.proto&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kd">service</span> <span class="n">OrderService</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="k">rpc</span> <span class="n">queryOrders</span><span class="p">(</span><span class="n">google.protobuf.StringValue</span><span class="p">)</span> <span class="k">returns</span> <span class="p">(</span><span class="n">stream</span> <span class="n">Order</span><span class="p">)</span> <span class="p">{};</span> <span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kd">message</span> <span class="nc">Order</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="kt">int32</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="k">repeated</span> <span class="kt">string</span> <span class="n">goods</span> <span class="o">=</span> <span class="mi">2</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="kt">float</span> <span class="n">price</span> <span class="o">=</span> <span class="mi">3</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span></code></pre></div><ul>
+<li>首先我们引入了一个protocol buffers的官方库wrappers.proto，它提供了一些常见的message类型，可以帮助我们减少代码量。</li>
+<li>重点就是queryOrders方法的返回类型Order处增加了一个stream的描述，用来说明是一个流类型的返回。</li>
+</ul>
+<p>同样的用protoc生成桩代码</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">protoc -I<span class="o">=</span>. -I<span class="o">=</span>&lt;your_google_proto_path&gt;/src <span class="se">\ </span>       ⍉ 5h43m master!?
+</span></span><span class="line"><span class="cl">--go_out<span class="o">=</span>. <span class="se">\
+</span></span></span><span class="line"><span class="cl"><span class="se"></span>--go_opt<span class="o">=</span><span class="nv">paths</span><span class="o">=</span>source_relative <span class="se">\
+</span></span></span><span class="line"><span class="cl"><span class="se"></span>--go-grpc_out<span class="o">=</span>. <span class="se">\
+</span></span></span><span class="line"><span class="cl"><span class="se"></span>--go-grpc_opt<span class="o">=</span><span class="nv">paths</span><span class="o">=</span>source_relative <span class="se">\
+</span></span></span><span class="line"><span class="cl"><span class="se"></span>--go-grpc_opt<span class="o">=</span><span class="nv">require_unimplemented_servers</span><span class="o">=</span><span class="nb">false</span> <span class="se">\
+</span></span></span><span class="line"><span class="cl"><span class="se"></span>./order/order.proto
+</span></span></code></pre></div><p>接下来看下如何编写服务端骨架代码</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">pb</span> <span class="s">&#34;example/order&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;log&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;net&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;strings&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;google.golang.org/grpc&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;google.golang.org/protobuf/types/known/wrapperspb&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">OrderService</span> <span class="kd">struct</span><span class="p">{}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">svc</span> <span class="nx">OrderService</span><span class="p">)</span> <span class="nf">QueryOrders</span><span class="p">(</span><span class="nx">search</span> <span class="o">*</span><span class="nx">wrapperspb</span><span class="p">.</span><span class="nx">StringValue</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">stream</span> <span class="nx">pb</span><span class="p">.</span><span class="nx">OrderService_QueryOrdersServer</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span> <span class="err">①</span>
+</span></span><span class="line"><span class="cl">	<span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">o</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">orderMap</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">g</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">o</span><span class="p">.</span><span class="nx">Goods</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">			<span class="k">if</span> <span class="p">!</span><span class="nx">strings</span><span class="p">.</span><span class="nf">Contains</span><span class="p">(</span><span class="nx">g</span><span class="p">,</span> <span class="nx">search</span><span class="p">.</span><span class="nx">Value</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">				<span class="k">continue</span>
+</span></span><span class="line"><span class="cl">			<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">			<span class="nx">err</span> <span class="o">:=</span> <span class="nx">stream</span><span class="p">.</span><span class="nf">Send</span><span class="p">(</span><span class="nx">o</span><span class="p">)</span> <span class="err">②</span>
+</span></span><span class="line"><span class="cl">			<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">				<span class="k">return</span> <span class="nx">err</span>
+</span></span><span class="line"><span class="cl">			<span class="p">}</span>
+</span></span><span class="line"><span class="cl">			<span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;found order:%v&#34;</span><span class="p">,</span> <span class="nx">o</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">			<span class="k">break</span>
+</span></span><span class="line"><span class="cl">		<span class="p">}</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="kc">nil</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="o">...</span> <span class="c1">// 这里服务注册的实现参考之前的案例
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
+</span></span></code></pre></div><p>从①中可见，OrderService接口的QueryOrders方法定义不再和之前一样需要context，而是除了请求参数外，还提供了一个流类型的参数，并且返回值也只有error了。</p>
+<p>在②中，通过调用流参数stream的send方法，返回给客户端查询到的订单数据。接下来具体看看流模式下客户端如何接收服务端的响应。</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">client</span> <span class="o">:=</span> <span class="nx">pb</span><span class="p">.</span><span class="nf">NewOrderServiceClient</span><span class="p">(</span><span class="nx">conn</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span> <span class="mi">100</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Millisecond</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="k">defer</span> <span class="nf">cancel</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="nx">stream</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">client</span><span class="p">.</span><span class="nf">QueryOrders</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">wrapperspb</span><span class="p">.</span><span class="nx">StringValue</span><span class="p">{</span><span class="nx">Value</span><span class="p">:</span> <span class="s">&#34;iphone&#34;</span><span class="p">})</span>
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;query order fail:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="k">for</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">order</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">stream</span><span class="p">.</span><span class="nf">Recv</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="k">if</span> <span class="nx">err</span> <span class="o">==</span> <span class="nx">io</span><span class="p">.</span><span class="nx">EOF</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">			<span class="k">break</span>
+</span></span><span class="line"><span class="cl">		<span class="p">}</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;receive order stream error:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="k">continue</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;query order: [%+v]&#34;</span><span class="p">,</span> <span class="nx">order</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>客户端的实现和一元流的模式还是比较相似的，只是接收服务端响应时，需要循环来处理多个响应，直到接收到流结束的标志。</p>
+<h3 id="33-客户端流grpc模式">3.3 客户端流GRPC模式</h3>
+<p>客户端流（client streaming）rpc模式，即客户端会发送多个请求给服务端，不再是单个请求。而服务器端则会返回一个响应给客户端。</p>
+<p>需要注意的是：服务端不一定需要等到接收到所有客户端的请求后再进行处理，也可以接收到流中的一条或者多条消息后在处理和返回响应。</p>
+<p><img class="lazyload" src="/svg/loading.min.svg"
+    data-src="/posts/grpc-go-technology/client_stream.jpg"
+    data-srcset="/posts/grpc-go-technology/client_stream.jpg, /posts/grpc-go-technology/client_stream.jpg 1.5x, /posts/grpc-go-technology/client_stream.jpg 2x" data-sizes="auto"
+    alt="/posts/grpc-go-technology/client_stream.jpg" title="client_stream_rpc" width="651"  height="226"  /></p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-protobuf" data-lang="protobuf"><span class="line"><span class="cl"><span class="n">syntax</span> <span class="o">=</span> <span class="s">&#34;proto3&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kn">package</span> <span class="nn">order</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="k">option</span> <span class="n">go_package</span> <span class="o">=</span> <span class="s">&#34;example/order&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="k">import</span> <span class="s">&#34;google/protobuf/wrappers.proto&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kd">service</span> <span class="n">OrderService</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="k">rpc</span> <span class="n">updateOrders</span><span class="p">(</span><span class="n">stream</span> <span class="n">Order</span><span class="p">)</span> <span class="k">returns</span> <span class="p">(</span><span class="n">google.protobuf.StringValue</span><span class="p">)</span> <span class="p">{};</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kd">message</span> <span class="nc">Order</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="kt">int32</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="k">repeated</span> <span class="kt">string</span> <span class="n">goods</span> <span class="o">=</span> <span class="mi">2</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="kt">float</span> <span class="n">price</span> <span class="o">=</span> <span class="mi">3</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span></code></pre></div><p>proto的定义和服务端流类似，把请求参数换成了流类型。接下来看下服务端实现逻辑：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">OrderService</span> <span class="kd">struct</span><span class="p">{}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">svc</span> <span class="nx">OrderService</span><span class="p">)</span> <span class="nf">UpdateOrders</span><span class="p">(</span><span class="nx">stream</span> <span class="nx">pb</span><span class="p">.</span><span class="nx">OrderService_UpdateOrdersServer</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="k">for</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">order</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">stream</span><span class="p">.</span><span class="nf">Recv</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">		<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">			<span class="k">if</span> <span class="nx">err</span> <span class="o">==</span> <span class="nx">io</span><span class="p">.</span><span class="nx">EOF</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">				<span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;receive finish&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">				<span class="k">return</span> <span class="nx">stream</span><span class="p">.</span><span class="nf">SendAndClose</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">wrapperspb</span><span class="p">.</span><span class="nx">StringValue</span><span class="p">{</span><span class="nx">Value</span><span class="p">:</span> <span class="s">&#34;receive finish&#34;</span><span class="p">})</span>
+</span></span><span class="line"><span class="cl">			<span class="p">}</span>
+</span></span><span class="line"><span class="cl">			<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;receive order error:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">			<span class="k">continue</span>
+</span></span><span class="line"><span class="cl">		<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">		<span class="nx">orderMap</span><span class="p">[</span><span class="nx">order</span><span class="p">.</span><span class="nx">Id</span><span class="p">]</span> <span class="p">=</span> <span class="nx">order</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>客户端的的实现如下所示</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">stream</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">client</span><span class="p">.</span><span class="nf">UpdateOrders</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;update order fail:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">stream</span><span class="p">.</span><span class="nf">Send</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">pb</span><span class="p">.</span><span class="nx">Order</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">Id</span><span class="p">:</span>    <span class="mi">1</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">Goods</span><span class="p">:</span> <span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&#34;iphone14&#34;</span><span class="p">,</span> <span class="s">&#34;ipad&#34;</span><span class="p">,</span> <span class="s">&#34;airpods&#34;</span><span class="p">},</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">Price</span><span class="p">:</span> <span class="mi">10000</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl"><span class="p">});</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;send order fail:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">stream</span><span class="p">.</span><span class="nf">Send</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">pb</span><span class="p">.</span><span class="nx">Order</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">Id</span><span class="p">:</span>    <span class="mi">2</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">Goods</span><span class="p">:</span> <span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&#34;iphone14&#34;</span><span class="p">,</span> <span class="s">&#34;macbook pro&#34;</span><span class="p">},</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">Price</span><span class="p">:</span> <span class="mi">20000</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl"><span class="p">});</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;send order fail:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="nx">response</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">stream</span><span class="p">.</span><span class="nf">CloseAndRecv</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;close stream fail:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;update order resp:%v&#34;</span><span class="p">,</span> <span class="nx">response</span><span class="p">)</span>
+</span></span></code></pre></div><p>与服务端流不同的是，客户端流结束发送后，需要通过<strong>CloseAndRecv</strong>来表明流结束发送，并且接受服务端响应。</p>
+<h3 id="34-双向流rpc模式">3.4 双向流RPC模式</h3>
+<p>双向流（Bidirectional）rpc模式，顾名思义就是客户端和服务端均采用流的方式进行通信。这种模式必须由客户端发起，之后则完全基于grpc客户端和服务器端的程序逻辑。</p>
+<p><img class="lazyload" src="/svg/loading.min.svg"
+    data-src="/posts/grpc-go-technology/bidirectional_stream.jpg"
+    data-srcset="/posts/grpc-go-technology/bidirectional_stream.jpg, /posts/grpc-go-technology/bidirectional_stream.jpg 1.5x, /posts/grpc-go-technology/bidirectional_stream.jpg 2x" data-sizes="auto"
+    alt="/posts/grpc-go-technology/bidirectional_stream.jpg" title="bidirectional_stream" width="651"  height="247"  /></p>
+<p>这里以一个处理订单作为例子，客户端调用处理订单方法，服务端接收到请求后，当收到的订单大于一定数量，则会进行发货，返回发货信息。</p>
+<p>此处客户端可以不断发送订单信息，服务端也可以通过流的方式不断接收进行处理。</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-protobuf" data-lang="protobuf"><span class="line"><span class="cl"><span class="n">syntax</span> <span class="o">=</span> <span class="s">&#34;proto3&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kn">package</span> <span class="nn">order</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="k">option</span> <span class="n">go_package</span> <span class="o">=</span> <span class="s">&#34;example/order&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="k">import</span> <span class="s">&#34;google/protobuf/wrappers.proto&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kd">service</span> <span class="n">OrderService</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="k">rpc</span> <span class="n">processOrders</span><span class="p">(</span><span class="n">stream</span> <span class="n">google.protobuf.Int32Value</span><span class="p">)</span> <span class="k">returns</span> <span class="p">(</span><span class="n">stream</span> <span class="n">ShipmentOrder</span><span class="p">)</span> <span class="p">{};</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kd">message</span> <span class="nc">ShipmentOrder</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="kt">int32</span> <span class="n">order_id</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>  <span class="kt">string</span> <span class="n">status</span> <span class="o">=</span> <span class="mi">2</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span></code></pre></div><p>服务端骨架实现如下：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">OrderService</span> <span class="kd">struct</span><span class="p">{}</span>
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">svc</span> <span class="nx">OrderService</span><span class="p">)</span> <span class="nf">ProcessOrders</span><span class="p">(</span><span class="nx">stream</span> <span class="nx">pb</span><span class="p">.</span><span class="nx">OrderService_ProcessOrdersServer</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">maxBatch</span> <span class="o">:=</span> <span class="mi">2</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="kd">var</span> <span class="nx">shipOrders</span> <span class="p">[]</span><span class="o">*</span><span class="nx">pb</span><span class="p">.</span><span class="nx">ShipmentOrder</span>
+</span></span><span class="line"><span class="cl">	<span class="k">for</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">order_id</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">stream</span><span class="p">.</span><span class="nf">Recv</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">		<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">			<span class="k">if</span> <span class="nx">err</span> <span class="o">==</span> <span class="nx">io</span><span class="p">.</span><span class="nx">EOF</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">				<span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">shipOrder</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">shipOrders</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">					<span class="nx">stream</span><span class="p">.</span><span class="nf">Send</span><span class="p">(</span><span class="nx">shipOrder</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">				<span class="p">}</span>
+</span></span><span class="line"><span class="cl">				<span class="k">return</span> <span class="kc">nil</span>
+</span></span><span class="line"><span class="cl">			<span class="p">}</span>
+</span></span><span class="line"><span class="cl">			<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;receive order err:[%v]&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">			<span class="k">return</span> <span class="nx">err</span>
+</span></span><span class="line"><span class="cl">		<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">		<span class="nx">shipOrders</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">shipOrders</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">pb</span><span class="p">.</span><span class="nx">ShipmentOrder</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">			<span class="nx">OrderId</span><span class="p">:</span> <span class="nx">order_id</span><span class="p">.</span><span class="nx">Value</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">			<span class="nx">Status</span><span class="p">:</span>  <span class="s">&#34;shipped&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		<span class="p">})</span>
+</span></span><span class="line"><span class="cl">		<span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="nx">shipOrders</span><span class="p">)</span> <span class="o">==</span> <span class="nx">maxBatch</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">			<span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">shipOrder</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">shipOrders</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">				<span class="nx">stream</span><span class="p">.</span><span class="nf">Send</span><span class="p">(</span><span class="nx">shipOrder</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">			<span class="p">}</span>
+</span></span><span class="line"><span class="cl">			<span class="nx">shipOrders</span> <span class="p">=</span> <span class="p">[]</span><span class="o">*</span><span class="nx">pb</span><span class="p">.</span><span class="nx">ShipmentOrder</span><span class="p">{}</span>
+</span></span><span class="line"><span class="cl">		<span class="p">}</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>客户端代码如下所示</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">stream</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">client</span><span class="p">.</span><span class="nf">ProcessOrders</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">())</span>
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;process order fail:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">stream</span><span class="p">.</span><span class="nf">Send</span><span class="p">(</span><span class="nx">wrapperspb</span><span class="p">.</span><span class="nf">Int32</span><span class="p">(</span><span class="mi">1</span><span class="p">));</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;send order fail:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">stream</span><span class="p">.</span><span class="nf">Send</span><span class="p">(</span><span class="nx">wrapperspb</span><span class="p">.</span><span class="nf">Int32</span><span class="p">(</span><span class="mi">2</span><span class="p">));</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;send order fail:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">stream</span><span class="p">.</span><span class="nf">Send</span><span class="p">(</span><span class="nx">wrapperspb</span><span class="p">.</span><span class="nf">Int32</span><span class="p">(</span><span class="mi">3</span><span class="p">));</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;send order fail:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="nx">ch</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">chan</span> <span class="kd">struct</span><span class="p">{})</span>
+</span></span><span class="line"><span class="cl"><span class="k">go</span> <span class="kd">func</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="k">for</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">shipOrder</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">stream</span><span class="p">.</span><span class="nf">Recv</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">		<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">			<span class="k">if</span> <span class="nx">err</span> <span class="o">==</span> <span class="nx">io</span><span class="p">.</span><span class="nx">EOF</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">				<span class="nb">close</span><span class="p">(</span><span class="nx">ch</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">				<span class="k">break</span>
+</span></span><span class="line"><span class="cl">			<span class="p">}</span>
+</span></span><span class="line"><span class="cl">			<span class="k">continue</span>
+</span></span><span class="line"><span class="cl">		<span class="p">}</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;ship order: [%v]\n&#34;</span><span class="p">,</span> <span class="nx">shipOrder</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">stream</span><span class="p">.</span><span class="nf">CloseSend</span><span class="p">();</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;close stream error:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="o">&lt;-</span><span class="nx">ch</span>
+</span></span></code></pre></div><p>有几点需要关注：</p>
+<ul>
+<li>客户端可以并发的读取和写入同一个流</li>
+<li>流的操作完全独立，客户端和服务器端可以按照任意顺序进行读取和写入</li>
+</ul>
+<h2 id="4-grpc的高阶使用">4. grpc的高阶使用</h2>
+<p>从这一章节开始，我们将会学习使用一些更加高阶的功能，熟悉并掌握这些功能，能够让我们的微服务赋予更加强大的功能。</p>
+<h3 id="41-负载均衡">4.1 负载均衡</h3>
+<p>在之前的例子中，客户端发起对服务端的请求时，都是采用固定的ip和端口，但是我们实际项目中，我们的服务为了满足更高的可用性和并发能力都会启用多个实例（节点）。另一方面，在如今云原生的场景下，容器编排（kubernetes）越来越普及，实例的节点ip也并不总是固定不变。因此这种访问服务端的方式在实际项目中并不合适。</p>
+<p>正因如此，当客户端请求服务端时，便需要根据一定的负载均衡策略去选择可以访问的节点。而作为grpc，在实现负载均衡这块，可以采用如下三种方式：</p>
+<ol>
+<li>负载均衡器代理</li>
+<li>客户端负载均衡</li>
+</ol>
+<p>接下来会来介绍这几种方式，重点将会介绍服务发现的方式。</p>
+<h4 id="411-负载均衡器代理">4.1.1 负载均衡器代理</h4>
+<p><img class="lazyload" src="/svg/loading.min.svg"
+    data-src="/posts/grpc-go-technology/grpc_balancer.jpg"
+    data-srcset="/posts/grpc-go-technology/grpc_balancer.jpg, /posts/grpc-go-technology/grpc_balancer.jpg 1.5x, /posts/grpc-go-technology/grpc_balancer.jpg 2x" data-sizes="auto"
+    alt="/posts/grpc-go-technology/grpc_balancer.jpg" title="grpc_balancer" width="637"  height="291"  /></p>
+<p>这种方式下，客户端请求的是负载均衡器，由负载均衡器根据一定策略挑选后端的节点，再将请求转发给该节点。</p>
+<p>负载均衡器需要选择能够支持HTTP/2的，或者直接挑选能够支持grpc的，例如nginx、envoy代理。</p>
+<h4 id="412-客户端负载均衡">4.1.2 客户端负载均衡</h4>
+<p>这种方式，负载均衡器将会放置在客户端内，由客户端来选择服务实例的节点。因此客户端需要知道服务端的所有节点信息，并具备节点的管理和选择的能力。</p>
+<p><img class="lazyload" src="/svg/loading.min.svg"
+    data-src="/posts/grpc-go-technology/grpc-client-balancer.jpg"
+    data-srcset="/posts/grpc-go-technology/grpc-client-balancer.jpg, /posts/grpc-go-technology/grpc-client-balancer.jpg 1.5x, /posts/grpc-go-technology/grpc-client-balancer.jpg 2x" data-sizes="auto"
+    alt="/posts/grpc-go-technology/grpc-client-balancer.jpg" title="grpc-client-balancer" width="612"  height="291"  /></p>
+<p>grpc目前支持了客户端的负载均衡，在节点挑选的策略上，默认支持两种：</p>
+<ol>
+<li>pick_first，尝试连接第一个，默认策略
+<ol>
+<li>如果能够连接成功，就会将该地址用于所有的 RPC</li>
+<li>如果失败，则会尝试下一个地址</li>
+</ol>
+</li>
+<li>round_robin，轮询每个后端节点，做到雨露均沾</li>
+</ol>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">serverPolicy</span> <span class="o">:=</span> <span class="s">`{
+</span></span></span><span class="line"><span class="cl"><span class="s">	&#34;loadBalancingConfig&#34;: [ { &#34;round_robin&#34;: {} } ]
+</span></span></span><span class="line"><span class="cl"><span class="s">}`</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="nx">conn</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">Dial</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;demo://order&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">grpc</span><span class="p">.</span><span class="nf">WithDefaultServiceConfig</span><span class="p">(</span><span class="nx">serverPolicy</span><span class="p">),</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">grpc</span><span class="p">.</span><span class="nf">WithTransportCredentials</span><span class="p">(</span><span class="nx">insecure</span><span class="p">.</span><span class="nf">NewCredentials</span><span class="p">()),</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">err</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="k">defer</span> <span class="nx">conn</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span>
+</span></span></code></pre></div><p>这里出现一个特殊的字符串”demo://order“，其中demo代表模式名（Scheme），order代表服务名（Service）。由于建立连接时不再采用ip+端口方式，grpc通过这种模式+服务名的方式去匹配到服务节点集合，并根据<strong>WithBalancerName</strong>指定的策略，挑选出一个节点进行连接。</p>
+<p>至于模式和服务是如何被解析为实际的ip和端口的，下一结会来重点讲述，这里暂先略过。</p>
+<p>然而，这种将负载均衡器放置在客户端的方式，会让客户端显得臃肿了一些，客户端除了完成自身的请求与响应的处理外，还需要负责服务端实例节点的维护，在服务端节点下线时，客户端需要及时进行剔除。</p>
+<p>随着云原生生态的发展，服务注册与发现越来越被广泛的用在微服务中，通过这种方式不仅可以实现多实例的负载，还能实现实例的动态选择和限流等容灾功能，进而实现更强大的分布式微服务集群的管理，接下来我们便来介绍这种使用方式。</p>
+<h4 id="413-服务注册中心">4.1.3 服务注册中心</h4>
+<p><img class="lazyload" src="/svg/loading.min.svg"
+    data-src="/posts/grpc-go-technology/grpc-naming-service.jpg"
+    data-srcset="/posts/grpc-go-technology/grpc-naming-service.jpg, /posts/grpc-go-technology/grpc-naming-service.jpg 1.5x, /posts/grpc-go-technology/grpc-naming-service.jpg 2x" data-sizes="auto"
+    alt="/posts/grpc-go-technology/grpc-naming-service.jpg" title="grpc-naming-service.jpg" width="663"  height="359"  /></p>
+<p>这里引入了一个”服务注册中心“的组件，微服务上线时，需要主动向注册中心注册节点，上报自己的ip和端口。也就是说，注册中心维护了注册上去的这些微服务的节点信息。</p>
+<p>客户端请求服务接口时，将会分为以下几步：</p>
+<ol>
+<li>向注册中心询问要访问的服务的节点信息，即ip和端口等</li>
+<li>注册中心根据负载均衡策略，从已注册上去的服务实例中挑选出实例，将实例信息返回给客户端</li>
+<li>客户端获取到实例信息后，则可以直接向服务实例发起请求</li>
+</ol>
+<p>常用的服务注册中心有：consul、eureka、etcd，还有腾讯开源的<a href="https://github.com/polarismesh/polaris-go" target="_blank" rel="noopener noreffer">北极星</a>
+</p>
+<p>不难发现，其实上述1和2的过程就是服务名解析的过程。对于grpc-go来说，天然支持了名字解析的功能，只需要将注册中心查询实例节点的过程，按照grpc-go协议的规则封装即可。</p>
+<p>以腾讯的北极星为例子，我们只需要实现一个北极星名字解析的插件，便能够实现实例节点的发现。</p>
+<p>借助名字解析后，我们的客户端代码实现又变得相对简单了一些</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">service</span> <span class="o">:=</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;%s://%s&#34;</span><span class="p">,</span> <span class="nx">schema</span><span class="p">,</span> <span class="nx">serviceName</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="nx">conn</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">Dial</span><span class="p">(</span><span class="nx">service</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		 <span class="nx">grpc</span><span class="p">.</span><span class="nf">WithTransportCredentials</span><span class="p">(</span><span class="nx">insecure</span><span class="p">.</span><span class="nf">NewCredentials</span><span class="p">())</span>
+</span></span><span class="line"><span class="cl"><span class="o">...</span> <span class="c1">// 错误处理
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl"><span class="nf">makeGrpcRequest</span><span class="p">(</span><span class="nx">conn</span><span class="p">)</span>
+</span></span></code></pre></div><h4 id="414-名字解析">4.1.4 名字解析</h4>
+<p>这一节，我们就来重点学学，如何在grpc-go中实现一个名字解析器的插件。</p>
+<p>根据grpc-go框架要求，我们需要实现如下两个接口：</p>
+<ul>
+<li>resolver.Builder接口，用来创建名字解析器（resolver），该接口包含如下两个方法
+<ul>
+<li>Build()，用于创建解析器resolver，grpc在调用Dial建立连接时，会采用同步（synchronously）的方式调用该方法</li>
+<li>Scheme()，用于返回该解析器的模式，例如上述案例中的”demo“</li>
+</ul>
+</li>
+<li>resolver.Resolver接口，名字解析器，它会监听该服务名下实例节点的变化，该接口包含如下两个方法
+<ul>
+<li>ResolveNow()，解析目标名字。它需要被设计成支持并发调用的功能。</li>
+<li>Close()，关闭解析器</li>
+</ul>
+</li>
+</ul>
+<p>接下来，我们便来实现一个简单的名字解析器。将&quot;demo://myService.order&quot;解析到 127.0.0.1:10000 和 127.0.0.1:10001上。</p>
+<p>首先，先实现resolver.Resolver接口</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">var</span> <span class="nx">serviceCenter</span> <span class="p">=</span> <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">][]</span><span class="kt">string</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;myService.order&#34;</span><span class="p">:</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="s">&#34;127.0.0.1:10000&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		<span class="s">&#34;127.0.0.1:10001&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="p">},</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">demoResolver</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">target</span> <span class="nx">resolver</span><span class="p">.</span><span class="nx">Target</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">cc</span>     <span class="nx">resolver</span><span class="p">.</span><span class="nx">ClientConn</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">rn</span>     <span class="kd">chan</span> <span class="kd">struct</span><span class="p">{}</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">wg</span>     <span class="nx">sync</span><span class="p">.</span><span class="nx">WaitGroup</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">r</span> <span class="o">*</span><span class="nx">demoResolver</span><span class="p">)</span> <span class="nf">watcher</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="k">defer</span> <span class="nx">r</span><span class="p">.</span><span class="nx">wg</span><span class="p">.</span><span class="nf">Done</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">ticker</span> <span class="o">:=</span> <span class="nx">time</span><span class="p">.</span><span class="nf">NewTicker</span><span class="p">(</span><span class="mi">5</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span> 
+</span></span><span class="line"><span class="cl">	<span class="k">defer</span> <span class="nx">ticker</span><span class="p">.</span><span class="nf">Stop</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="k">for</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="k">select</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="k">case</span> <span class="o">&lt;-</span><span class="nx">r</span><span class="p">.</span><span class="nx">rn</span><span class="p">:</span>  <span class="err">①</span>
+</span></span><span class="line"><span class="cl">		<span class="k">case</span> <span class="o">&lt;-</span><span class="nx">ticker</span><span class="p">.</span><span class="nx">C</span><span class="p">:</span> <span class="err">②</span>
+</span></span><span class="line"><span class="cl">		<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">		<span class="c1">// 从注册中心获取所有节点
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>		<span class="nx">addrs</span><span class="p">,</span> <span class="nx">ok</span> <span class="o">:=</span> <span class="nx">serviceCenter</span><span class="p">[</span><span class="nx">r</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">URL</span><span class="p">.</span><span class="nx">Host</span><span class="p">]</span> <span class="err">③</span>
+</span></span><span class="line"><span class="cl">		<span class="k">if</span> <span class="p">!</span><span class="nx">ok</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">			<span class="k">continue</span>
+</span></span><span class="line"><span class="cl">		<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">		<span class="nx">state</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">resolver</span><span class="p">.</span><span class="nx">State</span><span class="p">{}</span>
+</span></span><span class="line"><span class="cl">		<span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">addr</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">addrs</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">			<span class="nx">state</span><span class="p">.</span><span class="nx">Addresses</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">state</span><span class="p">.</span><span class="nx">Addresses</span><span class="p">,</span> <span class="nx">resolver</span><span class="p">.</span><span class="nx">Address</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">				<span class="nx">Addr</span><span class="p">:</span> <span class="nx">addr</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">			<span class="p">})</span>
+</span></span><span class="line"><span class="cl">		<span class="p">}</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">r</span><span class="p">.</span><span class="nx">cc</span><span class="p">.</span><span class="nf">UpdateState</span><span class="p">(</span><span class="o">*</span><span class="nx">state</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">r</span> <span class="o">*</span><span class="nx">demoResolver</span><span class="p">)</span> <span class="nf">ResolveNow</span><span class="p">(</span><span class="nx">resolver</span><span class="p">.</span><span class="nx">ResolveNowOptions</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="k">select</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="k">case</span> <span class="nx">r</span><span class="p">.</span><span class="nx">rn</span> <span class="o">&lt;-</span> <span class="kd">struct</span><span class="p">{}{}:</span>
+</span></span><span class="line"><span class="cl">	<span class="k">default</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">r</span> <span class="o">*</span><span class="nx">demoResolver</span><span class="p">)</span> <span class="nf">Close</span><span class="p">()</span> <span class="p">{}</span>
+</span></span></code></pre></div><p>通过①和②，实现定时监控节点变化。③处，构建一个服务注册中心的映射，实际项目中可以换为对应的服务注册组件来获取，例如consul、北极星等。</p>
+<p>接下来实现resolver.Builder接口</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">DemoResolverBulder</span> <span class="kd">struct</span><span class="p">{}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">builder</span> <span class="o">*</span><span class="nx">DemoResolverBulder</span><span class="p">)</span> <span class="nf">Build</span><span class="p">(</span><span class="nx">target</span> <span class="nx">resolver</span><span class="p">.</span><span class="nx">Target</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">cc</span> <span class="nx">resolver</span><span class="p">.</span><span class="nx">ClientConn</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">opts</span> <span class="nx">resolver</span><span class="p">.</span><span class="nx">BuildOptions</span><span class="p">)</span> <span class="p">(</span><span class="nx">resolver</span><span class="p">.</span><span class="nx">Resolver</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">demoResolver</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">demoResolver</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">target</span><span class="p">:</span> <span class="nx">target</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">cc</span><span class="p">:</span>     <span class="nx">cc</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">rn</span><span class="p">:</span>     <span class="nb">make</span><span class="p">(</span><span class="kd">chan</span> <span class="kd">struct</span><span class="p">{}),</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">demoResolver</span><span class="p">.</span><span class="nx">wg</span><span class="p">.</span><span class="nf">Add</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">go</span> <span class="nx">demoResolver</span><span class="p">.</span><span class="nf">watcher</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">demoResolver</span><span class="p">.</span><span class="nf">ResolveNow</span><span class="p">(</span><span class="nx">resolver</span><span class="p">.</span><span class="nx">ResolveNowOptions</span><span class="p">{})</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">demoResolver</span><span class="p">,</span> <span class="kc">nil</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">receiver</span> <span class="o">*</span><span class="nx">DemoResolverBulder</span><span class="p">)</span> <span class="nf">Scheme</span><span class="p">()</span> <span class="kt">string</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="s">&#34;demo&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>最后，注册该builder即可：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">init</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">resolver</span><span class="p">.</span><span class="nf">Register</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">DemoResolverBulder</span><span class="p">{})</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>之后，我们便可以采用如下方式连接服务端</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">conn</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">Dial</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;demo://myService.order&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">grpc</span><span class="p">.</span><span class="nf">WithTransportCredentials</span><span class="p">(</span><span class="nx">insecure</span><span class="p">.</span><span class="nf">NewCredentials</span><span class="p">()),</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">err</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="k">defer</span> <span class="nx">conn</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span>
+</span></span></code></pre></div><p>以上便是实现一个名字解析器的过程，具体grpc是如何调用我们注册的demo名字解析器，可以自行研究下grpc-go的源码，之后也会写一篇关于底层源码分析的文章来描述。</p>
+<p>这里也给出两个名字解析器的真实案例，感兴趣可以阅读，提高对解析器实现的理解：</p>
+<ol>
+<li>grpc-go dns解析器源码：https://github.com/grpc/grpc-go/blob/master/internal/resolver/dns/dns_resolver.go</li>
+<li>腾讯北极星grpc插件源码：https://github.com/polarismesh/grpc-go-polaris/blob/main/resolver.go</li>
+</ol>
+<p>注意：解析器只是解析出了该名字下所有的实例节点，而真正发起请求的时候，节点的选择并不是解析器的职责。之前提到grpc-go默认支持了两种负载均衡策略，我们也同样可以定制实现其他的策略，具体可以参考<code>balancer.Builder</code>接口的定义，本文就不再说明。</p>
+<h3 id="42-拦截器">4.2 拦截器</h3>
+<p>有时我们期望服务端在执行远程方法之前或者之后，抑或客户端在调用远程方法之前或者之后，执行一些通用的逻辑，例如认证、监控上报等，grpc为我们提供了拦截器（interceptor）的功能。</p>
+<p>grpc的拦截器根据rpc的模式，分为</p>
+<ul>
+<li>一元拦截器（unary interceptor），用于一元rpc模式</li>
+<li>流拦截器（streaming interceptor），用于流rpc
+这两种拦截器可以用于服务端，也可以用于客户端。</li>
+</ul>
+<h4 id="421-服务端拦截器">4.2.1 服务端拦截器</h4>
+<p>顾名思义，是在服务端的远程方法执行之前或者之后执行的一段逻辑。
+<img class="lazyload" src="/svg/loading.min.svg"
+    data-src="/posts/grpc-go-technology/server_interceptor.jpg"
+    data-srcset="/posts/grpc-go-technology/server_interceptor.jpg, /posts/grpc-go-technology/server_interceptor.jpg 1.5x, /posts/grpc-go-technology/server_interceptor.jpg 2x" data-sizes="auto"
+    alt="/posts/grpc-go-technology/server_interceptor.jpg" title="server_interceptor" width="906"  height="381"  /></p>
+<p><strong>一元拦截器</strong>
+需要实现UnaryServerInterceptor类型的函数，并在创建grpc服务的时候注册进去即可。</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">orderInterceptor</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">req</span> <span class="kd">interface</span><span class="p">{},</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">info</span> <span class="o">*</span><span class="nx">grpc</span><span class="p">.</span><span class="nx">UnaryServerInfo</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">handler</span> <span class="nx">grpc</span><span class="p">.</span><span class="nx">UnaryHandler</span><span class="p">)</span> <span class="p">(</span><span class="nx">resp</span> <span class="kd">interface</span><span class="p">{},</span> <span class="nx">err</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;before handle: %s&#34;</span><span class="p">,</span> <span class="nx">info</span><span class="p">.</span><span class="nx">FullMethod</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">ctx</span> <span class="p">=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithValue</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="s">&#34;foo&#34;</span><span class="p">,</span> <span class="s">&#34;bar&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">result</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nf">handler</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">req</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;after handle, result:%v, err:%v&#34;</span><span class="p">,</span> <span class="nx">result</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">result</span><span class="p">,</span> <span class="nx">err</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">s</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">NewServer</span><span class="p">(</span><span class="nx">grpc</span><span class="p">.</span><span class="nf">UnaryInterceptor</span><span class="p">(</span><span class="nx">orderInterceptor</span><span class="p">))</span>
+</span></span><span class="line"><span class="cl">	<span class="o">...</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>从代码可以看出，通过<code>handler(ctx, req)</code> 便可以区分请求之前和之后的处理逻辑，达到请求拦截和响应拦截的效果。</p>
+<p><strong>流拦截器</strong>
+需要实现StreamServerInterceptor类型函数，并在创建grpc服务的时候注册进去即可。</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">orderStreamInterceptorfunc</span><span class="p">(</span><span class="nx">srv</span> <span class="kd">interface</span><span class="p">{},</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">ss</span> <span class="nx">grpc</span><span class="p">.</span><span class="nx">ServerStream</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">info</span> <span class="o">*</span><span class="nx">grpc</span><span class="p">.</span><span class="nx">StreamServerInfo</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">handler</span> <span class="nx">grpc</span><span class="p">.</span><span class="nx">StreamHandler</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;before steaming handle: %s&#34;</span><span class="p">,</span> <span class="nx">info</span><span class="p">.</span><span class="nx">FullMethod</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">err</span> <span class="o">:=</span> <span class="nf">handler</span><span class="p">(</span><span class="nx">srv</span><span class="p">,</span> <span class="nx">ss</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;handle error:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">err</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">s</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">NewServer</span><span class="p">(</span><span class="nx">grpc</span><span class="p">.</span><span class="nf">StreamInterceptor</span><span class="p">(</span><span class="nx">orderStreamInterceptorfunc</span><span class="p">))</span>
+</span></span><span class="line"><span class="cl">	<span class="o">...</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><h4 id="422-客户端拦截器">4.2.2 客户端拦截器</h4>
+<p>当客户端发起对服务端的请求时，可以在请求发起前后进行拦截，执行一些通用的逻辑。
+<img class="lazyload" src="/svg/loading.min.svg"
+    data-src="/posts/grpc-go-technology/client_interceptor.jpg"
+    data-srcset="/posts/grpc-go-technology/client_interceptor.jpg, /posts/grpc-go-technology/client_interceptor.jpg 1.5x, /posts/grpc-go-technology/client_interceptor.jpg 2x" data-sizes="auto"
+    alt="/posts/grpc-go-technology/client_interceptor.jpg" title="client_interceptor" width="857"  height="382"  /></p>
+<p><strong>一元拦截器</strong>
+需要实现UnaryClientInterceptor类型函数，并注册到grpc.Dial中。</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">orderUnaryClientInterceptor</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">method</span> <span class="kt">string</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">req</span><span class="p">,</span> <span class="nx">reply</span> <span class="kd">interface</span><span class="p">{},</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">cc</span> <span class="o">*</span><span class="nx">grpc</span><span class="p">.</span><span class="nx">ClientConn</span><span class="p">,</span> <span class="nx">invoker</span> <span class="nx">grpc</span><span class="p">.</span><span class="nx">UnaryInvoker</span><span class="p">,</span> <span class="nx">opts</span> <span class="o">...</span><span class="nx">grpc</span><span class="p">.</span><span class="nx">CallOption</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;invoke remote method:%s&#34;</span><span class="p">,</span> <span class="nx">method</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">err</span> <span class="o">:=</span> <span class="nf">invoker</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">method</span><span class="p">,</span> <span class="nx">req</span><span class="p">,</span> <span class="nx">reply</span><span class="p">,</span> <span class="nx">cc</span><span class="p">,</span> <span class="nx">opts</span><span class="o">...</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;invoke err:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="kc">nil</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">conn</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">Dial</span><span class="p">(</span><span class="s">&#34;127.0.0.1:10000&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">grpc</span><span class="p">.</span><span class="nf">WithUnaryInterceptor</span><span class="p">(</span><span class="nx">orderUnaryClientInterceptor</span><span class="p">),</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">grpc</span><span class="p">.</span><span class="nf">WithTransportCredentials</span><span class="p">(</span><span class="nx">insecure</span><span class="p">.</span><span class="nf">NewCredentials</span><span class="p">()))</span>
+</span></span><span class="line"><span class="cl">	<span class="o">...</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>				
+</span></span></code></pre></div><p><strong>流拦截器</strong>
+需要实现StreamClientInterceptor类型函数，并注册到grpc.Dial中。</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">orderStreamInterceptor</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">desc</span> <span class="o">*</span><span class="nx">grpc</span><span class="p">.</span><span class="nx">StreamDesc</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">cc</span> <span class="o">*</span><span class="nx">grpc</span><span class="p">.</span><span class="nx">ClientConn</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">method</span> <span class="kt">string</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">streamer</span> <span class="nx">grpc</span><span class="p">.</span><span class="nx">Streamer</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">opts</span> <span class="o">...</span><span class="nx">grpc</span><span class="p">.</span><span class="nx">CallOption</span><span class="p">)</span> <span class="p">(</span><span class="nx">grpc</span><span class="p">.</span><span class="nx">ClientStream</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;invoke remote method:%s&#34;</span><span class="p">,</span> <span class="nx">method</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">stream</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nf">streamer</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">desc</span><span class="p">,</span> <span class="nx">cc</span><span class="p">,</span> <span class="nx">method</span><span class="p">,</span> <span class="nx">opts</span><span class="o">...</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;streamer err:%v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="nx">stream</span><span class="p">,</span> <span class="nx">err</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">conn</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">Dial</span><span class="p">(</span><span class="s">&#34;127.0.0.1:10000&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">grpc</span><span class="p">.</span><span class="nf">WithStreamInterceptor</span><span class="p">(</span><span class="nx">orderStreamInterceptor</span><span class="p">),</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">grpc</span><span class="p">.</span><span class="nf">WithTransportCredentials</span><span class="p">(</span><span class="nx">insecure</span><span class="p">.</span><span class="nf">NewCredentials</span><span class="p">()))</span>
+</span></span><span class="line"><span class="cl">	<span class="o">...</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>		
+</span></span></code></pre></div><h3 id="43-grpc与http">4.3 grpc与http</h3>
+<p>有些时候，我们的客户端并不一定具备grpc协议（protocol buffers）的接入能力，例如一些web端，这时候我们期望服务端能够提供的是基于HTTP协议的接口服务。</p>
+<p>作为后台服务，我们也经常期望能够使用统一的技术栈来构建系统，降低服务间的维护成本。而作为grpc-go也确实提供了这样的网关插件，用来实现反向代理的功能，进而能够实现将restful json api转化为grpc。</p>
+<p><img class="lazyload" src="/svg/loading.min.svg"
+    data-src="/posts/grpc-go-technology/grpc-gateway.png"
+    data-srcset="/posts/grpc-go-technology/grpc-gateway.png, /posts/grpc-go-technology/grpc-gateway.png 1.5x, /posts/grpc-go-technology/grpc-gateway.png 2x" data-sizes="auto"
+    alt="/posts/grpc-go-technology/grpc-gateway.png" title="grpc-gateway" width="2212"  height="1470"  /></p>
+<p>接下来看看如何实现一个接收http请求的grpc服务。</p>
+<p>首先定义proto协议</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-protobuf" data-lang="protobuf"><span class="line"><span class="cl"><span class="n">syntax</span> <span class="o">=</span> <span class="s">&#34;proto3&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kn">package</span> <span class="nn">gateway</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="k">option</span> <span class="n">go_package</span> <span class="o">=</span> <span class="s">&#34;example/gateway&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="k">import</span> <span class="s">&#34;google/protobuf/wrappers.proto&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="k">import</span> <span class="s">&#34;google/api/annotations.proto&#34;</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kd">service</span> <span class="n">Greeter</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="k">rpc</span> <span class="n">SayHello</span><span class="p">(</span><span class="n">HelloRequest</span><span class="p">)</span> <span class="k">returns</span> <span class="p">(</span><span class="n">HelloReply</span><span class="p">)</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>        <span class="k">option</span> <span class="p">(</span><span class="n">google.api.http</span><span class="p">)</span> <span class="o">=</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>            <span class="n">post</span><span class="o">:</span> <span class="s">&#34;/api/hello&#34;</span> <span class="err">①
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>            <span class="n">body</span><span class="o">:</span> <span class="s">&#34;*&#34;</span> <span class="err">②
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>        <span class="p">};</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="p">}</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="k">rpc</span> <span class="n">Echo</span><span class="p">(</span><span class="n">google.protobuf.StringValue</span><span class="p">)</span> <span class="k">returns</span> <span class="p">(</span><span class="n">google.protobuf.StringValue</span><span class="p">)</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>        <span class="k">option</span> <span class="p">(</span><span class="n">google.api.http</span><span class="p">)</span> <span class="o">=</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>            <span class="n">get</span><span class="o">:</span> <span class="s">&#34;/api/echo/{value}&#34;</span> <span class="err">③
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>        <span class="p">};</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="p">}</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kd">message</span> <span class="nc">HelloRequest</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="kt">string</span> <span class="n">name</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="kd">message</span> <span class="nc">HelloReply</span> <span class="p">{</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span>    <span class="kt">string</span> <span class="kd">message</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span><span class="err">
+</span></span></span><span class="line"><span class="cl"><span class="err"></span><span class="p">}</span><span class="err">
+</span></span></span></code></pre></div><p>这里我们引入了一个新的依赖”google/api/annotations.proto“。这个依赖可以在<a href="https://github.com/googleapis/googleapis" target="_blank" rel="noopener noreffer">google api</a>
+中可以找到，我们需要将这个依赖下载下来，放置到相关目录下。</p>
+<p>我们为<code>SayHello</code>和<code>Echo</code>都添加了grpc/http的映射：</p>
+<ul>
+<li>① 说明http请求的method为post请求，且路径为”/api/hello“</li>
+<li>② 消息体映射使用了“*”，表示没有在路径模板绑定的所有字段都应该映射到请求体中</li>
+<li>③ URL 路径模板是 ”/api/echo/{value}“，传入的值作为路径参数</li>
+</ul>
+<p>接下来便可以使用protoc编译该文件了，不过在编译之前，我们还需要安装grpc-gateway插件。</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">$ go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway
+</span></span></code></pre></div><p>安装完成后，便可以进行桩代码编译了</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">$ protoc -I<span class="o">=</span>. -I<span class="o">=</span>&lt;your_google_proto_path&gt;/src <span class="se">\
+</span></span></span><span class="line"><span class="cl"><span class="se"></span>--go_out<span class="o">=</span>. <span class="se">\
+</span></span></span><span class="line"><span class="cl"><span class="se"></span>--go_opt<span class="o">=</span><span class="nv">paths</span><span class="o">=</span>source_relative <span class="se">\
+</span></span></span><span class="line"><span class="cl"><span class="se"></span>--go-grpc_out<span class="o">=</span>. <span class="se">\
+</span></span></span><span class="line"><span class="cl"><span class="se"></span>--go-grpc_opt<span class="o">=</span><span class="nv">paths</span><span class="o">=</span>source_relative <span class="se">\
+</span></span></span><span class="line"><span class="cl"><span class="se"></span>--go-grpc_opt<span class="o">=</span><span class="nv">require_unimplemented_servers</span><span class="o">=</span><span class="nb">false</span> <span class="se">\
+</span></span></span><span class="line"><span class="cl"><span class="se"></span>--grpc-gateway_out<span class="o">=</span>. <span class="se">\
+</span></span></span><span class="line"><span class="cl"><span class="se"></span>--grpc-gateway_opt<span class="o">=</span><span class="nv">paths</span><span class="o">=</span>source_relative <span class="se">\
+</span></span></span><span class="line"><span class="cl"><span class="se"></span>./gateway/gateway.proto
+</span></span></code></pre></div><p>接下来便可以编写服务端代码了</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;context&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">pb</span> <span class="s">&#34;example/gateway&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;fmt&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;log&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;net&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;net/http&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;github.com/grpc-ecosystem/grpc-gateway/v2/runtime&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;google.golang.org/grpc&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;google.golang.org/grpc/credentials/insecure&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;google.golang.org/protobuf/types/known/wrapperspb&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">s</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">NewServer</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">pb</span><span class="p">.</span><span class="nf">RegisterGreeterServer</span><span class="p">(</span><span class="nx">s</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">GreeterService</span><span class="p">{})</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">addr</span> <span class="o">:=</span> <span class="s">&#34;127.0.0.1:10000&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">ls</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">net</span><span class="p">.</span><span class="nf">Listen</span><span class="p">(</span><span class="s">&#34;tcp&#34;</span><span class="p">,</span> <span class="nx">addr</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="k">return</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="k">go</span> <span class="kd">func</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalln</span><span class="p">(</span><span class="nx">s</span><span class="p">.</span><span class="nf">Serve</span><span class="p">(</span><span class="nx">ls</span><span class="p">))</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">mux</span> <span class="o">:=</span> <span class="nx">runtime</span><span class="p">.</span><span class="nf">NewServeMux</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">err</span> <span class="p">=</span> <span class="nx">pb</span><span class="p">.</span><span class="nf">RegisterGreeterHandlerFromEndpoint</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span> <span class="nx">mux</span><span class="p">,</span> <span class="nx">addr</span><span class="p">,</span> <span class="p">[]</span><span class="nx">grpc</span><span class="p">.</span><span class="nx">DialOption</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">grpc</span><span class="p">.</span><span class="nf">WithTransportCredentials</span><span class="p">(</span><span class="nx">insecure</span><span class="p">.</span><span class="nf">NewCredentials</span><span class="p">()),</span>
+</span></span><span class="line"><span class="cl">	<span class="p">})</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalln</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="k">return</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">ListenAndServe</span><span class="p">(</span><span class="s">&#34;127.0.0.1:8080&#34;</span><span class="p">,</span> <span class="nx">mux</span><span class="p">);</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalln</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">GreeterService</span> <span class="kd">struct</span><span class="p">{}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">svc</span> <span class="o">*</span><span class="nx">GreeterService</span><span class="p">)</span> <span class="nf">SayHello</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="nx">req</span> <span class="o">*</span><span class="nx">pb</span><span class="p">.</span><span class="nx">HelloRequest</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">pb</span><span class="p">.</span><span class="nx">HelloReply</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;hello:&#34;</span><span class="p">,</span> <span class="nx">req</span><span class="p">.</span><span class="nx">Name</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="o">&amp;</span><span class="nx">pb</span><span class="p">.</span><span class="nx">HelloReply</span><span class="p">{</span><span class="nx">Message</span><span class="p">:</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;Hello %s&#34;</span><span class="p">,</span> <span class="nx">req</span><span class="p">.</span><span class="nx">Name</span><span class="p">)},</span> <span class="kc">nil</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">svc</span> <span class="o">*</span><span class="nx">GreeterService</span><span class="p">)</span> <span class="nf">Echo</span><span class="p">(</span><span class="nx">_</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="nx">req</span> <span class="o">*</span><span class="nx">wrapperspb</span><span class="p">.</span><span class="nx">StringValue</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">wrapperspb</span><span class="p">.</span><span class="nx">StringValue</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;echo:&#34;</span><span class="p">,</span> <span class="nx">req</span><span class="p">.</span><span class="nx">Value</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="o">&amp;</span><span class="nx">wrapperspb</span><span class="p">.</span><span class="nx">StringValue</span><span class="p">{</span><span class="nx">Value</span><span class="p">:</span> <span class="nx">req</span><span class="p">.</span><span class="nx">Value</span><span class="p">},</span> <span class="kc">nil</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><ol>
+<li>首先我们和往常一样启动了一个grpc服务，监听在10000端口上</li>
+<li>接下来我们使用grpc的代理handler注册grpc服务的端点（endpoint），并创建http服务，监听在8080端口上，反向代理我们的grpc服务</li>
+</ol>
+<p>启动服务后，便可以发送http请求了：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-sh" data-lang="sh"><span class="line"><span class="cl">$ curl http://127.0.0.1:8080/api/echo/jim
+</span></span><span class="line"><span class="cl">$ curl -L -X POST <span class="s1">&#39;http://127.0.0.1:8080/api/hello&#39;</span> <span class="se">\
+</span></span></span><span class="line"><span class="cl"><span class="se"></span>-H <span class="s1">&#39;Content-Type: application/json&#39;</span> <span class="se">\
+</span></span></span><span class="line"><span class="cl"><span class="se"></span>-D <span class="s1">&#39;{
+</span></span></span><span class="line"><span class="cl"><span class="s1">    &#34;name&#34;: &#34;jack&#34;
+</span></span></span><span class="line"><span class="cl"><span class="s1">}&#39;</span>
+</span></span></code></pre></div><p>关于grpc网关的更多信息，可以查看其官方文档，<a href="https://grpc-ecosystem.github.io/grpc-gateway/" target="_blank" rel="noopener noreffer">grpc-gateway</a>
+</p>
+<h3 id="44-prometheus集成">4.4 Prometheus集成</h3>
+<p>Prometheus 是一个用于系统监控和警告的开源工具集，是云原生生态下最受欢迎的监控系统。另外它和grpc一样，也是CNCF基金会的成员。</p>
+<p>这里简单介绍下Prometheus：</p>
+<p>Prometheus集群会调用目标服务（例如grpc-go服务）的“/metrics”接口来收集该服务的度量指标。Prometheus集群会存储收集到的数据，我们可以基于一些规则进行数据的统计、聚合，便于我们观察系统的各项指标，也可以使用像Grafana这样的工具进行更强大的可视化，也可以针对异常的指标生成告警。</p>
+<p>关于promethues的使用不是本文的重点，可以自行查阅文档。接下来我们来看看，如何在grpc-go的服务下集成promethues监控。</p>
+<h4 id="441-grpc-go服务端集成promethues">4.4.1 grpc-go服务端集成promethues</h4>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;context&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">pb</span> <span class="s">&#34;example/gateway&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;fmt&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;log&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;net&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;net/http&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">grpc_prometheus</span> <span class="s">&#34;github.com/grpc-ecosystem/go-grpc-prometheus&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;github.com/prometheus/client_golang/prometheus&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;github.com/prometheus/client_golang/prometheus/promhttp&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;google.golang.org/grpc&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;google.golang.org/grpc/credentials/insecure&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;google.golang.org/protobuf/types/known/wrapperspb&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">var</span> <span class="p">(</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">reg</span>         <span class="p">=</span> <span class="nx">prometheus</span><span class="p">.</span><span class="nf">NewRegistry</span><span class="p">()</span> <span class="err">①</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">defaultGrpcMetrics</span> <span class="p">=</span> <span class="nx">grpc_prometheus</span><span class="p">.</span><span class="nf">NewServerMetrics</span><span class="p">()</span> <span class="err">②</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// Create a customized counter metric.
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="nx">sayHelloCount</span> <span class="p">=</span> <span class="nx">prometheus</span><span class="p">.</span><span class="nf">NewCounterVec</span><span class="p">(</span><span class="nx">prometheus</span><span class="p">.</span><span class="nx">CounterOpts</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">Name</span><span class="p">:</span> <span class="s">&#34;greeter_sayHello_count&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">Help</span><span class="p">:</span> <span class="s">&#34;Total number of RPCs handled on the server.&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="p">},</span> <span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">&#34;name&#34;</span><span class="p">})</span> <span class="err">③</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">init</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">reg</span><span class="p">.</span><span class="nf">MustRegister</span><span class="p">(</span><span class="nx">defaultGrpcMetrics</span><span class="p">,</span> <span class="nx">sayHelloCount</span><span class="p">)</span> <span class="err">④</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">s</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">NewServer</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">grpc</span><span class="p">.</span><span class="nf">UnaryInterceptor</span><span class="p">(</span><span class="nx">grpc_prometheus</span><span class="p">.</span><span class="nx">UnaryServerInterceptor</span><span class="p">))</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">pb</span><span class="p">.</span><span class="nf">RegisterGreeterServer</span><span class="p">(</span><span class="nx">s</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">GreeterService</span><span class="p">{})</span>
+</span></span><span class="line"><span class="cl">	
+</span></span><span class="line"><span class="cl">	<span class="nx">defaultGrpcMetrics</span><span class="p">.</span><span class="nf">InitializeMetrics</span><span class="p">(</span><span class="nx">s</span><span class="p">)</span> <span class="err">⑤</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">addr</span> <span class="o">:=</span> <span class="s">&#34;127.0.0.1:10000&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">ls</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">net</span><span class="p">.</span><span class="nf">Listen</span><span class="p">(</span><span class="s">&#34;tcp&#34;</span><span class="p">,</span> <span class="nx">addr</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="k">return</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="k">go</span> <span class="kd">func</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">http</span><span class="p">.</span><span class="nf">ListenAndServe</span><span class="p">(</span><span class="s">&#34;0.0.0.0:9092&#34;</span><span class="p">,</span> <span class="nx">promhttp</span><span class="p">.</span><span class="nf">HandlerFor</span><span class="p">(</span><span class="nx">reg</span><span class="p">,</span> <span class="nx">promhttp</span><span class="p">.</span><span class="nx">HandlerOpts</span><span class="p">{}))</span> <span class="err">⑥</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalln</span><span class="p">(</span><span class="nx">s</span><span class="p">.</span><span class="nf">Serve</span><span class="p">(</span><span class="nx">ls</span><span class="p">))</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">GreeterService</span> <span class="kd">struct</span><span class="p">{}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">svc</span> <span class="o">*</span><span class="nx">GreeterService</span><span class="p">)</span> <span class="nf">SayHello</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="nx">req</span> <span class="o">*</span><span class="nx">pb</span><span class="p">.</span><span class="nx">HelloRequest</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">pb</span><span class="p">.</span><span class="nx">HelloReply</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">sayHelloCount</span><span class="p">.</span><span class="nf">WithLabelValues</span><span class="p">(</span><span class="nx">req</span><span class="p">.</span><span class="nx">Name</span><span class="p">).</span><span class="nf">Inc</span><span class="p">()</span> <span class="err">⑦</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;hello:&#34;</span><span class="p">,</span> <span class="nx">req</span><span class="p">.</span><span class="nx">Name</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">return</span> <span class="o">&amp;</span><span class="nx">pb</span><span class="p">.</span><span class="nx">HelloReply</span><span class="p">{</span><span class="nx">Message</span><span class="p">:</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;Hello %s&#34;</span><span class="p">,</span> <span class="nx">req</span><span class="p">.</span><span class="nx">Name</span><span class="p">)},</span> <span class="kc">nil</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><ul>
+<li>①，创建promethues指标注册中心，它会持有系统中所有注册的数据收集器。如需添加新的收集 器，就要在这个注册中心中对其进行注册。</li>
+<li>②，会创建一些内部预先定义好的标准grpc指标，例如grpc远程方法的执行次数等</li>
+<li>③，创建一个自定义的指标，这里是用于上报sayHello方法的指标</li>
+<li>④，往注册中心注册所有指标</li>
+<li>⑤，初始化所有的标准度量指标</li>
+<li>⑥，为 Prometheus 创建 HTTP 服务器。在端口9092上以上下文 /metrics 开头的路由用来进行度量指标收集。</li>
+<li>⑦，上报指标</li>
+</ul>
+<h4 id="442-grpc-go客户端集成promethues">4.4.2 grpc-go客户端集成promethues</h4>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;bufio&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;context&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;fmt&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;log&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;net/http&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;os&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;strings&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;time&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">pb</span> <span class="s">&#34;example/gateway&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">grpc_prometheus</span> <span class="s">&#34;github.com/grpc-ecosystem/go-grpc-prometheus&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;github.com/prometheus/client_golang/prometheus&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;github.com/prometheus/client_golang/prometheus/promhttp&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;google.golang.org/grpc&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;google.golang.org/grpc/credentials/insecure&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">reg</span> <span class="o">:=</span> <span class="nx">prometheus</span><span class="p">.</span><span class="nf">NewRegistry</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">grpcMetrics</span> <span class="o">:=</span> <span class="nx">grpc_prometheus</span><span class="p">.</span><span class="nf">NewClientMetrics</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">reg</span><span class="p">.</span><span class="nf">MustRegister</span><span class="p">(</span><span class="nx">grpcMetrics</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">conn</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">grpc</span><span class="p">.</span><span class="nf">Dial</span><span class="p">(</span>
+</span></span><span class="line"><span class="cl">		<span class="s">&#34;127.0.0.1:10000&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">grpc</span><span class="p">.</span><span class="nf">WithUnaryInterceptor</span><span class="p">(</span><span class="nx">grpcMetrics</span><span class="p">.</span><span class="nf">UnaryClientInterceptor</span><span class="p">()),</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">grpc</span><span class="p">.</span><span class="nf">WithTransportCredentials</span><span class="p">(</span><span class="nx">insecure</span><span class="p">.</span><span class="nf">NewCredentials</span><span class="p">()),</span>
+</span></span><span class="line"><span class="cl">	<span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="k">defer</span> <span class="nx">conn</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="k">go</span> <span class="kd">func</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">http</span><span class="p">.</span><span class="nf">ListenAndServe</span><span class="p">(</span><span class="s">&#34;0.0.0.0:9094&#34;</span><span class="p">,</span> <span class="nx">promhttp</span><span class="p">.</span><span class="nf">HandlerFor</span><span class="p">(</span><span class="nx">reg</span><span class="p">,</span> <span class="nx">promhttp</span><span class="p">.</span><span class="nx">HandlerOpts</span><span class="p">{}))</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">client</span> <span class="o">:=</span> <span class="nx">pb</span><span class="p">.</span><span class="nf">NewGreeterClient</span><span class="p">(</span><span class="nx">conn</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// 每隔3秒，调用远程方法
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="k">go</span> <span class="kd">func</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="k">for</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">			<span class="nx">_</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">client</span><span class="p">.</span><span class="nf">SayHello</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(),</span> <span class="o">&amp;</span><span class="nx">pb</span><span class="p">.</span><span class="nx">HelloRequest</span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span> <span class="s">&#34;Test&#34;</span><span class="p">})</span>
+</span></span><span class="line"><span class="cl">			<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">				<span class="k">return</span>
+</span></span><span class="line"><span class="cl">			<span class="p">}</span>
+</span></span><span class="line"><span class="cl">			<span class="nx">time</span><span class="p">.</span><span class="nf">Sleep</span><span class="p">(</span><span class="mi">3</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="p">}</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// 这里便于我们退出客户端
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="nx">scanner</span> <span class="o">:=</span> <span class="nx">bufio</span><span class="p">.</span><span class="nf">NewScanner</span><span class="p">(</span><span class="nx">os</span><span class="p">.</span><span class="nx">Stdin</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">for</span> <span class="nx">scanner</span><span class="p">.</span><span class="nf">Scan</span><span class="p">()</span> <span class="p">{</span> 
+</span></span><span class="line"><span class="cl">		<span class="k">if</span> <span class="nx">strings</span><span class="p">.</span><span class="nf">ToLower</span><span class="p">(</span><span class="nx">scanner</span><span class="p">.</span><span class="nf">Text</span><span class="p">())</span> <span class="o">==</span> <span class="s">&#34;n&#34;</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">			<span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="p">}</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>客户端的实现和服务端没太大差别，主要将grpc_prometheus.NewServerMetrics()换成<code>grpc_prometheus.NewClientMetrics()</code>，因此这里也不展开讲了。</p>
+<h2 id="5-总结">5. 总结</h2>
+<p>grpc的生态非常的庞大，社区上有非常丰富则组件能够帮助我们实现更加健壮的系统，例如日志系统集成、链路跟踪等等，后面有时间再继续补充上去。</p>
+</div><div class="post-footer" id="post-footer">
+    <div class="post-info">
+        <div class="post-info-line">
+            <div class="post-info-mod">
+                <span>Updated on 2022-07-03</span>
+            </div></div>
+        <div class="post-info-line">
+            <div class="post-info-md"></div>
+            <div class="post-info-share">
+                <span><a href="javascript:void(0);" title="Share on Twitter" data-sharer="twitter" data-url="https://seedzz.abc/posts/grpc-go-technology/" data-title="基于Go语言的gRPC 使用指北" data-via="https://twitter.com/_seed__" data-hashtags="go,grpc,grpc-go"><i class="fab fa-twitter fa-fw" aria-hidden="true"></i></a><a href="javascript:void(0);" title="Share on Facebook" data-sharer="facebook" data-url="https://seedzz.abc/posts/grpc-go-technology/" data-hashtag="go"><i class="fab fa-facebook-square fa-fw" aria-hidden="true"></i></a><a href="javascript:void(0);" title="Share on Hacker News" data-sharer="hackernews" data-url="https://seedzz.abc/posts/grpc-go-technology/" data-title="基于Go语言的gRPC 使用指北"><i class="fab fa-hacker-news fa-fw" aria-hidden="true"></i></a><a href="javascript:void(0);" title="Share on Line" data-sharer="line" data-url="https://seedzz.abc/posts/grpc-go-technology/" data-title="基于Go语言的gRPC 使用指北"><i data-svg-src="https://cdn.jsdelivr.net/npm/simple-icons@6.20.0/icons/line.svg" aria-hidden="true"></i></a><a href="javascript:void(0);" title="Share on 微博" data-sharer="weibo" data-url="https://seedzz.abc/posts/grpc-go-technology/" data-title="基于Go语言的gRPC 使用指北" data-ralateuid="https://weibo.com/u/2683344291"><i class="fab fa-weibo fa-fw" aria-hidden="true"></i></a></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="post-info-more">
+        <section class="post-tags"><i class="fas fa-tags fa-fw" aria-hidden="true"></i>&nbsp;<a href="/tags/go/">go</a>,&nbsp;<a href="/tags/grpc/">grpc</a>,&nbsp;<a href="/tags/grpc-go/">grpc-go</a></section>
+        <section>
+            <span><a href="javascript:void(0);" onclick="window.history.back();">Back</a></span>&nbsp;|&nbsp;<span><a href="/">Home</a></span>
+        </section>
+    </div>
+
+    <div class="post-nav"><a href="/posts/go-context/" class="prev" rel="prev" title="深入理解Go Context"><i class="fas fa-angle-left fa-fw" aria-hidden="true"></i>深入理解Go Context</a>
+            <a href="/posts/go-interface/" class="next" rel="next" title="从一个例子聊聊Go的接口">从一个例子聊聊Go的接口<i class="fas fa-angle-right fa-fw" aria-hidden="true"></i></a></div>
+</div>
+</article></div>
+            </main><footer class="footer">
+        <div class="footer-container"><div class="footer-line" itemscope itemtype="http://schema.org/CreativeWork"><i class="far fa-copyright fa-fw" aria-hidden="true"></i><span itemprop="copyrightYear">2022 - 2023</span><span class="author" itemprop="copyrightHolder">&nbsp;<a href="/" target="_blank">Seed</a></span></div>
+        </div>
+    </footer></div>
+
+        <div id="fixed-buttons"><a href="#" id="back-to-top" class="fixed-button" title="Back to Top">
+                <i class="fas fa-arrow-up fa-fw" aria-hidden="true"></i>
+            </a><a href="#" id="view-comments" class="fixed-button" title="View Comments">
+                <i class="fas fa-comment fa-fw" aria-hidden="true"></i>
+            </a>
+        </div><script type="text/javascript" src="https://cdn.jsdelivr.net/npm/lazysizes@5.3.1/lazysizes.min.js"></script><script type="text/javascript" src="https://cdn.jsdelivr.net/npm/clipboard@2.0.11/dist/clipboard.min.js"></script><script type="text/javascript" src="https://cdn.jsdelivr.net/npm/sharer.js@0.5.1/sharer.min.js"></script><script type="text/javascript">window.config={"code":{"copyTitle":"Copy to clipboard","maxShownLines":50},"comment":{}};</script><script type="text/javascript" src="/js/theme.min.js"></script></body>
+</html>

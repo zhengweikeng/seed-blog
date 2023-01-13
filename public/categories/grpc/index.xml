@@ -1,0 +1,54 @@
+<rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
+    <channel>
+        <title>grpc - Category - Seed blog</title>
+        <link>https://seedzz.abc/categories/grpc/</link>
+        <description>grpc - Category - Seed blog</description>
+        <generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Sun, 03 Jul 2022 04:27:56 &#43;0800</lastBuildDate><atom:link href="https://seedzz.abc/categories/grpc/" rel="self" type="application/rss+xml" /><item>
+    <title>一文说透HTTP2</title>
+    <link>https://seedzz.abc/posts/one-blog-to-know-http2/</link>
+    <pubDate>Sun, 03 Jul 2022 04:27:56 &#43;0800</pubDate>
+    <author>Seed</author>
+    <guid>https://seedzz.abc/posts/one-blog-to-know-http2/</guid>
+    <description><![CDATA[1. HTTP的演进 1.1 HTTP/1 及其缺陷 众所周知，HTTP/1.0是HTTP协议的首个完整版本，它在协议中描述了我们常用的一些概念，例如首部（Header）、响应码（Status Code）、重定向（Redirect）、更多的方法（Post、Put、Delete等）。
+而到了HTTP/1.1又带来了众多新的概念，例如缓存首部、OPTIONS方法、Upgrade首部、Range请求、管道化（Pipelining）、压缩和传输编码（transfer-encoing）。
+然而随着Web越来越复杂，访问一个页面需要获取的资源越来越多，HTTP/1的一些缺陷也带来了性能上的问题。这里列举了几个比较重要的问题。
+队头阻塞（Head-of-line blocking，或缩写为HOL blocking）
+当我们的网站需要获取多份资源时（例如多张图片），HTTP/1协议下，如果只使用一个连接，则需要完成发起请求、等待响应这一对操作后，才可以发起下一次请求。在获取响应的过程中，一旦发生了任何问题，剩余的所有请求都会被阻塞住，此时页面也将无法渲染导致最终失去响应。
+为了解决这种问题，浏览器一般都会开启多个连接来并发请求，然而每个连接依旧会受到“队头阻塞“的影响。
+低效的TCP
+我们知道TCP是一种可靠性非常高的通信协议，它通过滑动窗口和拥塞控制，保证了即使在最差的网络下数据也能的可靠的传输。其中有个非常重要的概念叫“慢启动”，它是用来探索当前连接对应拥塞窗口的大小，目的是用来让新的连接了解当前网络状况，避免给已经拥堵的网络继续添堵。
+注：拥塞窗口指的是，在接收方确认接收到数据包前，发送方可以发送的包的数量。
+然而这种方式虽然让网络避免了拥堵，却让通信的效率非常的低下。多次的数据往返才能确认最佳拥塞窗口，而且实际的实现中，遇到丢包的情况，拥塞算法通常会选择缩小拥塞窗口。甚至遇到超时时，甚至会重置拥塞窗口导致重新进入慢启动阶段。
+首部臃肿
+HTTP/1请求的首部是无法进行压缩的，现如今Web页面中加入的首部越来越多，大小也越来越多，无法压缩的首部也势必给通信效率带来不良的影响。
+正因为HTTP/1存在的众多问题，社区上出现了很多针对性的优化，例如优化DNS查询、缓存机制、代码压缩、避免CSS/JS阻塞等。如果能从协议上去解决这些问题，才是问题最好的解决方式。
+1.2 HTTP/2 HTTP/2的协议基础来源于Google提出的SPDY协议，SPDY提出的多路复用、帧和首部压缩这些功能，也被最终整合进了HTTP/2协议中。
+HTTP/2包含如下几种特性：
+多路复用，允许同时通过单一的HTTP/2连接发起多重的请求-响应信息，很好的解决了浏览器限制同一个域名下的请求数量的问题，同时也更容易实现全速传输 不再使用文本形式传输数据，而是采用二进制传输 首部压缩 服务器推送，改变了传统的“请求-应答”工作模式，服务器不再是完全被动地响应请求，也可以新建“流”主动向客户端发送消息。 2. 实现一个简单的HTTP/2服务 我们经常会搭建一些web服务用来提供一些http restful的api接口，通常使用的是HTTP/1.1的协议，是否也可以升级为HTTP/2呢？这里我们将以go语言搭建的http服务为例子，看看在go语言的场景下怎么实现一个HTTP/2的web服务。
+2.1 TLS证书 HTTP/2协议中并没有要求必须使用TLS，然而当前主流的浏览器已都不支持非TLS的HTTP/2，也就是要求服务器端实现HTTPS。作为安全的角度，这也是合理的。
+正因为如此，HTTP/2协议的握手分两种方式：
+h2。这种握手方式下，要求必须使用TLS加密，在TLS握手期间会顺带完成HTTPS/2协议的协商，如果协商失败（比如客户端不支持或者服务端不支持），则会使用HTTPS/1继续后续通讯。 h2c。不使用TLS，而是多了一次基于HTTP协议的握手往返来完成向HTTP/2协议的升级，一般不建议使用 申请TLS证书的方式有很多。
+可以自行采用openssl生成自签名证书 去Let&rsquo;s Encrypt中申请证书。 一些第三方网站也提供签发一些证书 作为实例，我们使用第一种方式生成我们的签名证书，这种证书只能用在本地调试使用，浏览器是无法认识的。
+$ openssl genrsa -out key.pem 2048 $ openssl req -new -x509 -sha256 -key key.pem -out cert.pem -days 365 -subj &#34;/cn=demo.example.com&#34; 执行后，便拥有证书的私钥key.pem和对应的证书cert.pem。
+2.2 实现HTTP2服务 go语言是原生支持HTTP/2的，当服务端使用TLS时，便会默认启用HTTP/2。
+那么首先就来看下服务端的实例代码：]]></description>
+</item>
+<item>
+    <title>基于Go语言的gRPC 使用指北</title>
+    <link>https://seedzz.abc/posts/grpc-go-technology/</link>
+    <pubDate>Sun, 03 Jul 2022 04:27:56 &#43;0800</pubDate>
+    <author>Seed</author>
+    <guid>https://seedzz.abc/posts/grpc-go-technology/</guid>
+    <description><![CDATA[1. grpc介绍 1.1 什么是grpc 在了解什么是grpc前，需要先知道什么是rpc。所谓的rpc（Remote Procedure Call），即远程过程的调用协议，我们也经常称为进程间通信协议，它可以让调用远程的函数像调用本地函数一样简单方便。
+微服务和云原生架构出现后，我们构建一个系统时，各个业务功能都被拆分成了不同的服务模块，我们称之为微服务。而不同微服务间需要进行访问或者相互调用，便需要我们在不同微服务间定义统一的通信协议，构建一套进程间（或服务间）的通信技术来连接这些微服务。
+我们常用的HTTP协议本身也是一种rpc协议，另外常见的rpc协议还有facebook的thrift和google的grpc，下面章节也会对比下这两种常见的协议和grpc的差别。
+grpc是google于2015年开源的rpc框架，它具备标准化、可通用和跨平台的特点。这些特点使得不同微服务间可以方便的进行调用外，还支持可拓展的负载均衡、链路跟踪、健康检查等特性。而底层的通信，grpc采用的是HTTP/2来进行，性能和效率上能够得到充分的发挥。grpc也加入了CNCF（云原生计算基金会），逐渐的也成为了主流的社区上rpc框架。
+grpc作为一门框架或者说协议，不同的编程语言（java、c++、python等）都可以基于这套协议标准进行实现，而grpc-go就是grpc在go语言下的实现，本文后面的所有例子也会采用它来做示例和讲解。
+1.2 grpc与protocol buffers的关系 微服务间通信时，需要依赖统一的通信协议。这里我们暂且将主调方称为客户端，被调方称为服务端。
+服务端需要先定义服务接口，这种服务接口的描述语言，我们便称之为接口定义语言（interface definition language，IDL），而protocol buffers便是grpc所使用的接口定义语言。
+protocol buffers是一种语言中立、平台无关，用于实现结构化数据序列化的可扩展机制。根据该机制，服务接口将会定义一个文件扩展名为.proto的文件。如何使用protocol buffers不是本文的重点，具体可以参考官网 。
+这里提供一个grpc官网给出的一个proto文件示例：
+// The greeting service definition. service Greeter { // Sends a greeting rpc SayHello (HelloRequest) returns (HelloReply) {} } // The request message containing the user&#39;s name. message HelloRequest { string name = 1; } // The response message containing the greetings message HelloReply { string message = 1; } 我们通过proto文件定义好服务接口后，便需要根据这个定义生成服务端代码，我们称被生成的服务端代码为服务端骨架（skeleton）。]]></description>
+</item>
+</channel>
+</rss>

@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="robots" content="noodp" />
+        <title>从一个例子聊聊Go的接口 - Seed blog</title><meta name="Description" content="Welcome to my blog."><meta property="og:title" content="从一个例子聊聊Go的接口" />
+<meta property="og:description" content="一个有问题的案例 我们知道，go语言里，一个类型（例如结构体），在实现一个接口的时候，只需要其实现了这个接口里的所有方法，那么就算实现了该接口，而不需要像其他语言（例如java）一样显示的去声明实现某个接口。这种无侵入式的接口实现方式，也叫做“Duck typing”。
+在接手一个项目时，曾遇到过这么一个问题，直接看代码
+type Err struct { Code int32 Msg string } func (e *Err) Error() string { return fmt.Sprintf(&#34;[%d] %s&#34;, e.Code, e.Msg) } 从上述代码段能知道，以上Err结构体实现了error接口。
+在项目代码中，存在这样的函数代码：
+func someHandler() Err { ... } 虽然同样是返回错误，但是笔者觉得不是很优雅，于是在一次实现需求的时候，写了个类似这样的函数：
+func someNewHandler() error { // do some thing ... var err *Err if badCase() { err = &amp;Err{Code: 5000, Msg:&#34;got error&#34;} return err } return err } 之后在调用该函数的时候，这么写到：
+func Do() { err := someNewHandler() if err !" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://seedzz.abc/posts/go-interface/" /><meta property="article:section" content="posts" />
+<meta property="article:published_time" content="2022-07-03T04:27:56+08:00" />
+<meta property="article:modified_time" content="2022-07-03T04:27:56+08:00" /><meta property="og:site_name" content="Seed&#39;s blog" />
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="从一个例子聊聊Go的接口"/>
+<meta name="twitter:description" content="一个有问题的案例 我们知道，go语言里，一个类型（例如结构体），在实现一个接口的时候，只需要其实现了这个接口里的所有方法，那么就算实现了该接口，而不需要像其他语言（例如java）一样显示的去声明实现某个接口。这种无侵入式的接口实现方式，也叫做“Duck typing”。
+在接手一个项目时，曾遇到过这么一个问题，直接看代码
+type Err struct { Code int32 Msg string } func (e *Err) Error() string { return fmt.Sprintf(&#34;[%d] %s&#34;, e.Code, e.Msg) } 从上述代码段能知道，以上Err结构体实现了error接口。
+在项目代码中，存在这样的函数代码：
+func someHandler() Err { ... } 虽然同样是返回错误，但是笔者觉得不是很优雅，于是在一次实现需求的时候，写了个类似这样的函数：
+func someNewHandler() error { // do some thing ... var err *Err if badCase() { err = &amp;Err{Code: 5000, Msg:&#34;got error&#34;} return err } return err } 之后在调用该函数的时候，这么写到：
+func Do() { err := someNewHandler() if err !"/>
+<meta name="application-name" content="My cool site">
+<meta name="apple-mobile-web-app-title" content="My cool site"><meta name="theme-color" content="#ffffff"><meta name="msapplication-TileColor" content="#da532c"><link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"><link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5"><link rel="manifest" href="/site.webmanifest"><link rel="canonical" href="https://seedzz.abc/posts/go-interface/" /><link rel="prev" href="https://seedzz.abc/posts/grpc-go-technology/" /><link rel="next" href="https://seedzz.abc/posts/one-blog-to-know-http2/" /><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/normalize.css@8.0.1/normalize.min.css"><link rel="stylesheet" href="/css/style.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.1.1/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/animate.css@4.1.1/animate.min.css"><script type="application/ld+json">
+    {
+        "@context": "http://schema.org",
+        "@type": "BlogPosting",
+        "headline": "从一个例子聊聊Go的接口",
+        "inLanguage": "en",
+        "mainEntityOfPage": {
+            "@type": "WebPage",
+            "@id": "https:\/\/seedzz.abc\/posts\/go-interface\/"
+        },"genre": "posts","keywords": "go, interface","wordcount":  640 ,
+        "url": "https:\/\/seedzz.abc\/posts\/go-interface\/","datePublished": "2022-07-03T04:27:56+08:00","dateModified": "2022-07-03T04:27:56+08:00","publisher": {
+            "@type": "Organization",
+            "name": ""},"author": {
+                "@type": "Person",
+                "name": "Seed"
+            },"description": ""
+    }
+    </script></head>
+    <body data-header-desktop="fixed" data-header-mobile="auto"><script type="text/javascript">(window.localStorage && localStorage.getItem('theme') ? localStorage.getItem('theme') === 'dark' : ('auto' === 'auto' ? window.matchMedia('(prefers-color-scheme: dark)').matches : 'auto' === 'dark')) && document.body.setAttribute('theme', 'dark');</script>
+
+        <div id="mask"></div><div class="wrapper"><header class="desktop" id="header-desktop">
+    <div class="header-wrapper">
+        <div class="header-title">
+            <a href="/" title="Seed blog">Seed</a>
+        </div>
+        <div class="menu">
+            <div class="menu-inner"><a class="menu-item" href="/posts" title="all my blogs"> Posts </a><a class="menu-item" href="/tags/"> Tags </a><a class="menu-item" href="/categories/"> Categories </a><span class="menu-item delimiter"></span><a href="javascript:void(0);" class="menu-item theme-switch" title="Switch Theme">
+                    <i class="fas fa-adjust fa-fw" aria-hidden="true"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+</header><header class="mobile" id="header-mobile">
+    <div class="header-container">
+        <div class="header-wrapper">
+            <div class="header-title">
+                <a href="/" title="Seed blog">Seed</a>
+            </div>
+            <div class="menu-toggle" id="menu-toggle-mobile">
+                <span></span><span></span><span></span>
+            </div>
+        </div>
+        <div class="menu" id="menu-mobile"><a class="menu-item" href="/posts" title="all my blogs">Posts</a><a class="menu-item" href="/tags/" title="">Tags</a><a class="menu-item" href="/categories/" title="">Categories</a><a href="javascript:void(0);" class="menu-item theme-switch" title="Switch Theme">
+                <i class="fas fa-adjust fa-fw" aria-hidden="true"></i>
+            </a></div>
+    </div>
+</header><main class="main">
+                <div class="container"><div class="toc" id="toc-auto">
+            <h2 class="toc-title">Contents</h2>
+            <div class="toc-content" id="toc-content-auto"></div>
+        </div><article class="page single"><h1 class="single-title animate__animated animate__flipInX">从一个例子聊聊Go的接口</h1><div class="post-meta">
+            <div class="post-meta-line"><span class="post-author"><a href="/" title="Author" rel=" author" class="author"><i class="fas fa-user-circle fa-fw" aria-hidden="true"></i>Seed</a>
+</span>&nbsp;<span class="post-category">included in <a href="/categories/golang/"><i class="far fa-folder fa-fw" aria-hidden="true"></i>golang</a></span></div>
+            <div class="post-meta-line"><i class="far fa-calendar-alt fa-fw" aria-hidden="true"></i>&nbsp;<time datetime="2022-07-03">2022-07-03</time>&nbsp;<i class="fas fa-pencil-alt fa-fw" aria-hidden="true"></i>&nbsp;640 words&nbsp;
+                <i class="far fa-clock fa-fw" aria-hidden="true"></i>&nbsp;4 minutes&nbsp;</div>
+        </div><div class="details toc" id="toc-static"  data-kept="">
+                <div class="details-summary toc-title">
+                    <span>Contents</span>
+                    <span><i class="details-icon fas fa-angle-right" aria-hidden="true"></i></span>
+                </div>
+                <div class="details-content toc-content" id="toc-content-static"><nav id="TableOfContents">
+  <ul>
+    <li><a href="#一个有问题的案例">一个有问题的案例</a></li>
+    <li><a href="#接口类型">接口类型</a>
+      <ul>
+        <li><a href="#eface">eface</a></li>
+        <li><a href="#iface">iface</a></li>
+        <li><a href="#iface和eface的案例分析">iface和eface的案例分析</a></li>
+      </ul>
+    </li>
+    <li><a href="#总结">总结</a></li>
+  </ul>
+</nav></div>
+            </div><div class="content" id="content"><h2 id="一个有问题的案例">一个有问题的案例</h2>
+<p>我们知道，go语言里，一个类型（例如结构体），在实现一个接口的时候，只需要其实现了这个接口里的所有方法，那么就算实现了该接口，而不需要像其他语言（例如java）一样显示的去声明实现某个接口。这种无侵入式的接口实现方式，也叫做“Duck typing”。</p>
+<p>在接手一个项目时，曾遇到过这么一个问题，直接看代码</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Err</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl"> <span class="nx">Code</span>  <span class="kt">int32</span>
+</span></span><span class="line"><span class="cl"> <span class="nx">Msg</span>   <span class="kt">string</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">e</span> <span class="o">*</span><span class="nx">Err</span><span class="p">)</span> <span class="nf">Error</span><span class="p">()</span> <span class="kt">string</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl"> <span class="k">return</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;[%d] %s&#34;</span><span class="p">,</span> <span class="nx">e</span><span class="p">.</span><span class="nx">Code</span><span class="p">,</span> <span class="nx">e</span><span class="p">.</span><span class="nx">Msg</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>从上述代码段能知道，以上Err结构体实现了<code>error</code>接口。</p>
+<p>在项目代码中，存在这样的函数代码：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">someHandler</span><span class="p">()</span> <span class="nx">Err</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="o">...</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span> 
+</span></span></code></pre></div><p>虽然同样是返回错误，但是笔者觉得不是很优雅，于是在一次实现需求的时候，写了个类似这样的函数：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">someNewHandler</span><span class="p">()</span> <span class="kt">error</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="c1">// do some thing
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="o">...</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">err</span> <span class="o">*</span><span class="nx">Err</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nf">badCase</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">err</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nx">Err</span><span class="p">{</span><span class="nx">Code</span><span class="p">:</span> <span class="mi">5000</span><span class="p">,</span> <span class="nx">Msg</span><span class="p">:</span><span class="s">&#34;got error&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="nx">err</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">err</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>之后在调用该函数的时候，这么写到：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">Do</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">err</span> <span class="o">:=</span> <span class="nf">someNewHandler</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">log</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;error:%+v\n&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// handle error...
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="k">return</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="c1">// do other things
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="o">...</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">return</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>到这里，无论someHandler函数是否返回错误（无论这里的badCase()返回的是true还是false），Do中都是会进入错误处理逻辑。即只会打出如下日志：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl">error:&lt;nil&gt;
+</span></span></code></pre></div><p>当时调试了很久，最终才发现是这块逻辑（someNewHandler）的问题。问题的根本还是对接口的认识不足，导致在这里栽了跟头。要想明白这里的缘由，就必须去了解接口的内部实现。</p>
+<h2 id="接口类型">接口类型</h2>
+<p>在go中除了提供了我们上述提到的包含一些方法的接口类型之外，还提供了一种不带任何方法的接口类型，例如如下所示的接口：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">Print</span><span class="p">(</span><span class="nx">v</span> <span class="kd">interface</span><span class="p">{})</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">v</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Demo</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">F1</span> <span class="kt">int</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">F2</span> <span class="kt">string</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">d</span> <span class="o">:=</span> <span class="nx">Demo</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">F1</span><span class="p">:</span> <span class="mi">20</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">F2</span><span class="p">:</span> <span class="s">&#34;foo&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="nf">Print</span><span class="p">(</span><span class="nx">d</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>这种接口类型可以让我们定义不限类型的参数。</p>
+<p>现在我们知道接口类型有：</p>
+<ul>
+<li>携带一个或者多个方法的接口</li>
+<li>不带任何方法的接口</li>
+</ul>
+<p>这两种类型的接口在go中对应的源码定义如下（源码位置$GOROOT/src/runtime/runtime2.go）：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">iface</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">tab</span> <span class="o">*</span><span class="nx">itab</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">data</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nx">Pointer</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">eface</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">_type</span> <span class="o">*</span><span class="nx">_type</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">data</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nx">Pointer</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><ul>
+<li>iface，定义的是拥有方法的接口类型</li>
+<li>eface，定义的是不带方法的接口类型</li>
+</ul>
+<p>两者的共同部分为data，是个指针字段，该字段会指向赋值给这个接口类型变量的动态类型的值。接下来先从简单一些的无方法的接口类型开始介绍。</p>
+<h3 id="eface">eface</h3>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">eface</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">_type</span> <span class="o">*</span><span class="nx">_type</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">data</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nx">Pointer</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// 源码位置：$GOROOT/src/runtime/type.go
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">type</span> <span class="nx">_type</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="c1">// 存储了类型占用的内存空间，为内存空间的分配提供信息
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">size</span>       <span class="kt">uintptr</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">ptrdata</span>    <span class="kt">uintptr</span> <span class="c1">// size of memory prefix holding all pointers
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="c1">// 能够帮助快速确定类型是否相等
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="nx">hash</span>       <span class="kt">uint32</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">tflag</span>      <span class="nx">tflag</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">align</span>      <span class="kt">uint8</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">fieldAlign</span> <span class="kt">uint8</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">kind</span>       <span class="kt">uint8</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">equal</span> <span class="kd">func</span><span class="p">(</span><span class="nx">unsafe</span><span class="p">.</span><span class="nx">Pointer</span><span class="p">,</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nx">Pointer</span><span class="p">)</span> <span class="kt">bool</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">gcdata</span>    <span class="o">*</span><span class="kt">byte</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">str</span>       <span class="nx">nameOff</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">ptrToThis</span> <span class="nx">typeOff</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>我们将上述案例代码调整一下作为例子</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Demo</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">F1</span> <span class="kt">int</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">F2</span> <span class="kt">string</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">d</span> <span class="o">:=</span> <span class="nx">Demo</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">F1</span><span class="p">:</span> <span class="mi">20</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">F2</span><span class="p">:</span> <span class="s">&#34;foo&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">v</span> <span class="kd">interface</span><span class="p">{}</span> <span class="p">=</span> <span class="nx">d</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">v</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>将该例子对应到eface结构上的话，大概如下图所示：
+<img class="lazyload" src="/svg/loading.min.svg"
+    data-src="/posts/go-interface/interface_1.png"
+    data-srcset="/posts/go-interface/interface_1.png, /posts/go-interface/interface_1.png 1.5x, /posts/go-interface/interface_1.png 2x" data-sizes="auto"
+    alt="/posts/go-interface/interface_1.png" title="interface_1.png" width="1404"  height="482"  /></p>
+<h3 id="iface">iface</h3>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">iface</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">tab</span> <span class="o">*</span><span class="nx">itab</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">data</span> <span class="nx">unsafe</span><span class="p">.</span><span class="nx">Pointer</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">itab</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">inter</span> <span class="o">*</span><span class="nx">interfacetype</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">_type</span> <span class="o">*</span><span class="nx">_type</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">hash</span>  <span class="kt">uint32</span> 
+</span></span><span class="line"><span class="cl">    <span class="nx">_</span>     <span class="p">[</span><span class="mi">4</span><span class="p">]</span><span class="kt">byte</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">fun</span>   <span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="kt">uintptr</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// 源码位置：$GOROOT/src/runtime/type.go
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">type</span> <span class="nx">interfacetype</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">typ</span> <span class="nx">_type</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">pkgpath</span> <span class="nx">name</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">mhdr</span> <span class="p">[]</span><span class="nx">imethod</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><ul>
+<li>inter字段，存储该接口类型自身的信息
+<ul>
+<li>typ，类型信息</li>
+<li>pkgpath，包路径名</li>
+<li>mhdr，接口方法集合切片</li>
+</ul>
+</li>
+<li>其中hash字段是对_type.hash字段的的拷贝，用于类型转换时的快速判断。当想要将interface类型转化成具体的类型时，可以使用该字段快速判断目标类型和具体类型是否一致</li>
+<li>_type和eface类型，存储了接口类型变量的动态类型的信息</li>
+<li>fun则记录了动态类型已实现的接口方法的调用地址数组</li>
+</ul>
+<p>现在我们把文章开头的Err结构体作为例子来说明下</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Err</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl"> <span class="nx">Code</span>  <span class="kt">int32</span>
+</span></span><span class="line"><span class="cl"> <span class="nx">Msg</span>   <span class="kt">string</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">e</span> <span class="o">*</span><span class="nx">Err</span><span class="p">)</span> <span class="nf">Error</span><span class="p">()</span> <span class="kt">string</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl"> <span class="k">return</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;[%d] %s&#34;</span><span class="p">,</span> <span class="nx">e</span><span class="p">.</span><span class="nx">Code</span><span class="p">,</span> <span class="nx">e</span><span class="p">.</span><span class="nx">Msg</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">Err</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">Code</span><span class="p">:</span> <span class="mi">5000</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">Msg</span><span class="p">:</span> <span class="s">&#34;got error&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">e</span> <span class="kt">error</span> <span class="p">=</span> <span class="nx">err</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nf">Error</span><span class="p">())</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>将该例子对应到iface结构上的话，大概如下图所示：
+<img class="lazyload" src="/svg/loading.min.svg"
+    data-src="/posts/go-interface/interface_2.png"
+    data-srcset="/posts/go-interface/interface_2.png, /posts/go-interface/interface_2.png 1.5x, /posts/go-interface/interface_2.png 2x" data-sizes="auto"
+    alt="/posts/go-interface/interface_2.png" title="interface_1.png" width="1794"  height="980"  /></p>
+<h3 id="iface和eface的案例分析">iface和eface的案例分析</h3>
+<p>通过上面的示例和示意图我们能知道，无论是iface和eface类型：</p>
+<ul>
+<li>其tab和_type都是用来表示其动态类型的信息（如上述的Err和Demo结构体的信息）。</li>
+<li>而data指向的内存空间则是用来存储其动态类型变量的值，即动态值（如上述结构体实例err和d中的值）</li>
+</ul>
+<p>这里我们需要再解释下动态类型和动态值的概念，当然对应的就是静态类型：</p>
+<ul>
+<li>动态值，赋值给这个接口类型的值，如err值</li>
+<li>动态类型，这个动态值的类型，如Err结构体这个类型，当然也可以是go中基本数据类型</li>
+<li>静态类型，可以认为就是这个接口类型，如error接口</li>
+</ul>
+<p>有了这些概念，我们便有了如下结论：</p>
+<ul>
+<li>当需要判断一个接口类型的变量是否为nil时，必须是tab/_type和data均为nil时才能成立。</li>
+<li>当需要判断两个接口类型的变量是否相等时，则需要判断tab/_type和data指针指向的内存空间所存储的数据值是否都相同（注意，不是data指针的值）</li>
+</ul>
+<h4 id="iface接口类型的示例">iface接口类型的示例</h4>
+<p>接下来一起来看个关于iface接口类型的例子：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Pet</span> <span class="kd">interface</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nf">Category</span><span class="p">()</span> <span class="kt">string</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">type</span> <span class="nx">Dog</span> <span class="kd">struct</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">Name</span> <span class="kt">string</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="p">(</span><span class="nx">dog</span> <span class="nx">Dog</span><span class="p">)</span> <span class="nf">Category</span><span class="p">()</span> <span class="kt">string</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="s">&#34;dog&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">dog</span> <span class="o">*</span><span class="nx">Dog</span> 
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;dog is nil:%t\n&#34;</span><span class="p">,</span> <span class="nx">dog</span><span class="o">==</span><span class="kc">nil</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">pet</span> <span class="nx">Pet</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;pet is nil:%t\n&#34;</span><span class="p">,</span> <span class="nx">pet</span><span class="o">==</span><span class="kc">nil</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="nx">pet</span> <span class="p">=</span> <span class="nx">dog</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;pet is nil:%t\n&#34;</span><span class="p">,</span> <span class="nx">pet</span><span class="o">==</span><span class="kc">nil</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>上面的程序打印出来的结果是这样的：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl">dog is nil:true
+</span></span><span class="line"><span class="cl">pet is nil:true
+</span></span><span class="line"><span class="cl">pet is nil:false
+</span></span></code></pre></div><p>如果已经理解了上面的知识，这里的结论就不难解释了。</p>
+<p>第一个true不难理解，这里要明白的是后面两个关于pet变量是否为nil的问题。</p>
+<p>我们知道这种类型的接口，采用的是iface结构的接口类型。</p>
+<p>第一个判断pet是否为nil，由于此时pet还没有被赋值，此时iface的tab和data均为nil，因此pet即为nil。</p>
+<p>第二个判断pet是否为nil前，将值还是为nil的dog对象赋值给pet，此时iface的tab中存储的类型（动态类型值）即为Dog结构体的信息，而由于dog还没被赋值过（值为nil），因此pet的iface中data的值仍然为nil。我们说过只有当tab和data均为nil时，接口对象才能为nil，因此这里打印出来的pet就不是为nil了。</p>
+<p>接下来我们把上面的例子再修改下</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">dog1</span> <span class="o">:=</span> <span class="nx">Dog</span><span class="p">{</span><span class="s">&#34;a little dog&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">dog2</span> <span class="o">:=</span> <span class="nx">Dog</span><span class="p">{</span><span class="s">&#34;a little dog&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">dog3</span> <span class="o">:=</span> <span class="nx">Dog</span><span class="p">{</span><span class="s">&#34;a big dog&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">pet1</span> <span class="nx">Pet</span> <span class="p">=</span> <span class="nx">dog1</span>
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">pet2</span> <span class="nx">Pet</span> <span class="p">=</span> <span class="nx">dog2</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;pet1 == pet2 :%t\n&#34;</span><span class="p">,</span> <span class="nx">pet1</span> <span class="o">==</span> <span class="nx">pet2</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;pet1 == pet3 :%t\n&#34;</span><span class="p">,</span> <span class="nx">pet1</span> <span class="o">==</span> <span class="nx">pet3</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>上面的程序打印出来的结果是这样的：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl"><span class="nv">pet1</span> <span class="o">==</span> pet2 :true
+</span></span><span class="line"><span class="cl"><span class="nv">pet1</span> <span class="o">==</span> pet3 :false
+</span></span></code></pre></div><p>这个结果的解释也很简单了。</p>
+<p>pet1和pet2的两个接口类型变量中，iface的tab都是相同的，而且data中指针存储的值也都是相等的（都是“a little dog”），因此pet1和pet2是相等的。</p>
+<p>而对于pet1和pet3，它们的data指针存储的值则是不相等的，因此pet1和pet3不相等。</p>
+<p>到此为止，我们已经能够去解释文章开头中所遇到的问题了，让我们把那段问题代码再拿过来看一遍：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">someNewHandler</span><span class="p">()</span> <span class="kt">error</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="c1">// do some thing
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="o">...</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">err</span> <span class="o">*</span><span class="nx">Err</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nf">badCase</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">err</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nx">Err</span><span class="p">{</span><span class="nx">Code</span><span class="p">:</span> <span class="mi">5000</span><span class="p">,</span> <span class="nx">Msg</span><span class="p">:</span><span class="s">&#34;got error&#34;</span><span class="p">}</span>
+</span></span><span class="line"><span class="cl">        <span class="k">return</span> <span class="nx">err</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">return</span> <span class="nx">err</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">Do</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">err</span> <span class="o">:=</span> <span class="nf">someNewHandler</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nx">log</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;error:%+v\n&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">        <span class="c1">// handle error...
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>        <span class="k">return</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="c1">// do other things
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="o">...</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="k">return</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>这里someNewHandler()函数返回的是接口类型为<strong>error</strong>的接口。而我们在函数中定义了一个实际类型为<strong>Err</strong>的变量err，虽然一开始没有赋值，在badCase()返回false的情况下，<strong>err</strong>在函数的最后作为返回值返回了。</p>
+<p>对于函数调用者来说，下面的代码等效了：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">e</span> <span class="o">:=</span> <span class="nf">someNewHandler</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// 上面的代码等效于
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="kd">var</span> <span class="nx">err</span> <span class="o">*</span><span class="nx">Err</span>
+</span></span><span class="line"><span class="cl"><span class="kd">var</span> <span class="nx">e</span> <span class="kt">error</span> <span class="p">=</span> <span class="nx">err</span>
+</span></span></code></pre></div><p>这就回到了我们这一节一开始的例子，此时iface的tab不为nil，而data为nil，因此e始终是不为nil的。</p>
+<p>修改也很简单，直接把最后的<code>return err</code>改为<code>return nil</code>即可。</p>
+<h4 id="eface接口类型的示例">eface接口类型的示例</h4>
+<p>理解了iface，再理解eface已经不是什么难事，这里也通过个示例来巩固下理解。</p>
+<p>在给出示例前，先思考下，在go里，iface和eface都是runtime包内部的非导出结构体，有没什么办法可以让我们获取这两个结构体的值呢。</p>
+<p>其实是有的，go中提供了内置函数println用于输出iface和eface两个指针的值，编译器其会根据要要输出的参数类型替换为特定的函数，如果是iface和eface类型，他们的打印函数如下（路径为：$GOROOT/src/runtime/print.go）：</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">printeface</span><span class="p">(</span><span class="nx">e</span> <span class="nx">eface</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nb">print</span><span class="p">(</span><span class="s">&#34;(&#34;</span><span class="p">,</span> <span class="nx">e</span><span class="p">.</span><span class="nx">_type</span><span class="p">,</span> <span class="s">&#34;,&#34;</span><span class="p">,</span> <span class="nx">e</span><span class="p">.</span><span class="nx">data</span><span class="p">,</span> <span class="s">&#34;)&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">printiface</span><span class="p">(</span><span class="nx">i</span> <span class="nx">iface</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">        <span class="nb">print</span><span class="p">(</span><span class="s">&#34;(&#34;</span><span class="p">,</span> <span class="nx">i</span><span class="p">.</span><span class="nx">tab</span><span class="p">,</span> <span class="s">&#34;,&#34;</span><span class="p">,</span> <span class="nx">i</span><span class="p">.</span><span class="nx">data</span><span class="p">,</span> <span class="s">&#34;)&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>有了这个辅助函数，我们来看下如下的示例</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">ef1</span> <span class="kd">interface</span><span class="p">{}</span>
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">ef2</span> <span class="kd">interface</span><span class="p">{}</span>
+</span></span><span class="line"><span class="cl">    <span class="kd">var</span> <span class="nx">a</span><span class="p">,</span> <span class="nx">b</span> <span class="p">=</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">20</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="nx">ef1</span> <span class="p">=</span> <span class="nx">a</span>
+</span></span><span class="line"><span class="cl">    <span class="nx">ef2</span> <span class="p">=</span> <span class="nx">b</span>
+</span></span><span class="line"><span class="cl">    <span class="nb">println</span><span class="p">(</span><span class="s">&#34;ef1:&#34;</span><span class="p">,</span> <span class="nx">ef1</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="nb">println</span><span class="p">(</span><span class="s">&#34;ef2:&#34;</span><span class="p">,</span> <span class="nx">ef2</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="nb">println</span><span class="p">(</span><span class="s">&#34;ef1==ef2:&#34;</span><span class="p">,</span> <span class="nx">ef1</span> <span class="o">==</span> <span class="nx">ef2</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="nx">ef2</span> <span class="p">=</span> <span class="mi">10</span>
+</span></span><span class="line"><span class="cl">    <span class="nb">println</span><span class="p">(</span><span class="s">&#34;ef1:&#34;</span><span class="p">,</span> <span class="nx">ef1</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="nb">println</span><span class="p">(</span><span class="s">&#34;ef2:&#34;</span><span class="p">,</span> <span class="nx">ef2</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="nb">println</span><span class="p">(</span><span class="s">&#34;ef1==ef2:&#34;</span><span class="p">,</span> <span class="nx">ef1</span> <span class="o">==</span> <span class="nx">ef2</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">    <span class="nx">ef2</span> <span class="p">=</span> <span class="nb">int64</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="nb">println</span><span class="p">(</span><span class="s">&#34;ef1:&#34;</span><span class="p">,</span> <span class="nx">ef1</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="nb">println</span><span class="p">(</span><span class="s">&#34;ef2:&#34;</span><span class="p">,</span> <span class="nx">ef2</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">    <span class="nb">println</span><span class="p">(</span><span class="s">&#34;ef1==ef2:&#34;</span><span class="p">,</span> <span class="nx">ef1</span> <span class="o">==</span> <span class="nx">ef2</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p>示例的输出值类似如下</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl">ef1: <span class="o">(</span>0x485820,0xc00009af68<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ef2: <span class="o">(</span>0x485820,0xc00009af60<span class="o">)</span>
+</span></span><span class="line"><span class="cl"><span class="nv">ef1</span><span class="o">==</span>ef2: <span class="nb">false</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">ef1: <span class="o">(</span>0x485820,0xc00009af68<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ef2: <span class="o">(</span>0x485820,0x4b27f8<span class="o">)</span>
+</span></span><span class="line"><span class="cl"><span class="nv">ef1</span><span class="o">==</span>ef2: <span class="nb">true</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">ef1: <span class="o">(</span>0x485820,0xc00009af68<span class="o">)</span>
+</span></span><span class="line"><span class="cl">ef2: <span class="o">(</span>0x4858e0,0x4b27f8<span class="o">)</span>
+</span></span><span class="line"><span class="cl"><span class="nv">ef1</span><span class="o">==</span>ef2: <span class="nb">false</span>
+</span></span></code></pre></div><p>第一部分的输出值中，ef1和ef2的 <strong>_type</strong> 字段的指针值都是相同的（0x485820），这是因为a和b的类型都为int。而它们的data指针指向的数据内容是不同的（分别为10和20），因此ef1和ef2是不相等的。</p>
+<p>第二部分的输出值中，<strong>_type</strong>字段的指针值仍然相同，但是data指针指向的数据内容是相同的（都是int类型的10），因此虽然data指针值不相同，但是ef1和ef2就是相等的。</p>
+<p>第三部分的输出值中，由于ef2被赋予了一个int64类型的值，导致了 <strong>_type</strong> 字段的指针值是不同的，因此不管data指针如何，ef1和ef2就是不相等的。</p>
+<p>这里我们发现第二部分和第三部分的ef2变量中，明明我们是重新采用不同的类型值进行赋值，但其data指针值却都是相同的（0x4b27f8）。</p>
+<p>一般来说，go在创建eface的时候，是会为data重新分配空间的，再把动态类型的值赋值到这个空间下面。因此大多数情况下，我们看到的data指针值都是不同的。但是data分配规则，go是会进行优化的，不一定每次都要创建一个新空间，因此便有了上面指针值相同的问题。</p>
+<h2 id="总结">总结</h2>
+<p>现在我们知道，要判断一个接口类型的变量是否为nil，不能简单的通过我们的肉眼直觉去判断。</p>
+<p>这里对go的接口做个简单的总结，接口类型包含：</p>
+<ul>
+<li>带有方法的接口，底层结构为iface，包含如下两个指针字段
+<ul>
+<li>tab，记录了动态类型相关的一系列信息</li>
+<li>data，记录了动态值的数据</li>
+</ul>
+</li>
+<li>不带有方法的接口，底层结构为eface，包含如下两个指针字段
+<ul>
+<li>_type，和iface的tab类似，记录了动态类型的信息</li>
+<li>data，记录了动态值的数据</li>
+</ul>
+</li>
+</ul>
+<p>在做接口类型变量的判断时，需要记住：</p>
+<ul>
+<li>接口类型的变量是否为空时，必须tab/_type和data均为空</li>
+<li>两个接口类型的变量是否相等，必须tab/_type和data指针指向的空间存储的数据值均相等</li>
+</ul>
+</div><div class="post-footer" id="post-footer">
+    <div class="post-info">
+        <div class="post-info-line">
+            <div class="post-info-mod">
+                <span>Updated on 2022-07-03</span>
+            </div></div>
+        <div class="post-info-line">
+            <div class="post-info-md"></div>
+            <div class="post-info-share">
+                <span><a href="javascript:void(0);" title="Share on Twitter" data-sharer="twitter" data-url="https://seedzz.abc/posts/go-interface/" data-title="从一个例子聊聊Go的接口" data-via="https://twitter.com/_seed__" data-hashtags="go,interface"><i class="fab fa-twitter fa-fw" aria-hidden="true"></i></a><a href="javascript:void(0);" title="Share on Facebook" data-sharer="facebook" data-url="https://seedzz.abc/posts/go-interface/" data-hashtag="go"><i class="fab fa-facebook-square fa-fw" aria-hidden="true"></i></a><a href="javascript:void(0);" title="Share on Hacker News" data-sharer="hackernews" data-url="https://seedzz.abc/posts/go-interface/" data-title="从一个例子聊聊Go的接口"><i class="fab fa-hacker-news fa-fw" aria-hidden="true"></i></a><a href="javascript:void(0);" title="Share on Line" data-sharer="line" data-url="https://seedzz.abc/posts/go-interface/" data-title="从一个例子聊聊Go的接口"><i data-svg-src="https://cdn.jsdelivr.net/npm/simple-icons@6.20.0/icons/line.svg" aria-hidden="true"></i></a><a href="javascript:void(0);" title="Share on 微博" data-sharer="weibo" data-url="https://seedzz.abc/posts/go-interface/" data-title="从一个例子聊聊Go的接口" data-ralateuid="https://weibo.com/u/2683344291"><i class="fab fa-weibo fa-fw" aria-hidden="true"></i></a></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="post-info-more">
+        <section class="post-tags"><i class="fas fa-tags fa-fw" aria-hidden="true"></i>&nbsp;<a href="/tags/go/">go</a>,&nbsp;<a href="/tags/interface/">interface</a></section>
+        <section>
+            <span><a href="javascript:void(0);" onclick="window.history.back();">Back</a></span>&nbsp;|&nbsp;<span><a href="/">Home</a></span>
+        </section>
+    </div>
+
+    <div class="post-nav"><a href="/posts/grpc-go-technology/" class="prev" rel="prev" title="基于Go语言的gRPC 使用指北"><i class="fas fa-angle-left fa-fw" aria-hidden="true"></i>基于Go语言的gRPC 使用指北</a>
+            <a href="/posts/one-blog-to-know-http2/" class="next" rel="next" title="一文说透HTTP2">一文说透HTTP2<i class="fas fa-angle-right fa-fw" aria-hidden="true"></i></a></div>
+</div>
+</article></div>
+            </main><footer class="footer">
+        <div class="footer-container"><div class="footer-line" itemscope itemtype="http://schema.org/CreativeWork"><i class="far fa-copyright fa-fw" aria-hidden="true"></i><span itemprop="copyrightYear">2022 - 2023</span><span class="author" itemprop="copyrightHolder">&nbsp;<a href="/" target="_blank">Seed</a></span></div>
+        </div>
+    </footer></div>
+
+        <div id="fixed-buttons"><a href="#" id="back-to-top" class="fixed-button" title="Back to Top">
+                <i class="fas fa-arrow-up fa-fw" aria-hidden="true"></i>
+            </a><a href="#" id="view-comments" class="fixed-button" title="View Comments">
+                <i class="fas fa-comment fa-fw" aria-hidden="true"></i>
+            </a>
+        </div><script type="text/javascript" src="https://cdn.jsdelivr.net/npm/lazysizes@5.3.1/lazysizes.min.js"></script><script type="text/javascript" src="https://cdn.jsdelivr.net/npm/clipboard@2.0.11/dist/clipboard.min.js"></script><script type="text/javascript" src="https://cdn.jsdelivr.net/npm/sharer.js@0.5.1/sharer.min.js"></script><script type="text/javascript">window.config={"code":{"copyTitle":"Copy to clipboard","maxShownLines":50},"comment":{}};</script><script type="text/javascript" src="/js/theme.min.js"></script></body>
+</html>
