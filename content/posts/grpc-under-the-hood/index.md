@@ -1,9 +1,8 @@
 ---
-title: "grpc底层原理"
+title: "grpc底层原理浅析"
 date: 2022-07-03T04:27:56+08:00
 tags: ["grpc"]
 categories: ["grpc"]
-draft: true
 ---
 
 之前已经写过grpc的使用，以及HTTP2的介绍，可以参考如下链接：
@@ -101,7 +100,70 @@ A 04 4A 61 63 6B
 ## HTTP/2
 grpc会采用HTTP/2作为其网络传输协议，关于HTTP2这里就不解释了，可参考开头处给出的链接。
 
+客户端和服务端会采用HTTP/2协议建立连接，之后会在连接中采用流的方式传输数据，流中采用数据帧的形式进行发送。而被发送的消息，可能会在一个数据帧中，也可能会跨多个数据帧。
+
+当客户端需要发起请求时，便会发起请求消息操作。
+
+![](grpc-req-res-message.png)
+
+在发起请求的时候，grpc会封装一些http/2的请求头，例如如下所示
+
+```
+HEADERS (flags = END_HEADERS)
+:method = POST
+:schema = http
+:path = /user
+:autoority = example.com
+grpc-timeout = 0.5s
+content-type = application/grpc
+grpc-encoding= gzip
+```
+
+关于请求头有几点注意：
+* 这里以":"开头的请求头是保留头信息，是HTTP/2要求保留头信息需要出现在其他头信息之前
+* grpc传递的头信息包含：
+	* 调用定义的头信息（call-definition header），其是HTTP/2预定义的头信息，需要在下述的自定义元数据之前发送
+	* 自定义元数据，是由应用程序定义的任意一组键值对，这些头要确保不要使用“grpc-”开头
+
+请求消息结束需要放置一个特殊的EOS（End of Stream）数据帧来标记。
+
+```
+DATA (flags = END_STREAM)
+<Length-Prefixed Message>
+```
+
+对于响应消息也有类似的结构，只是消息中间可能并没有“以长度作为前缀的消息”
+
+```
+HEADERS (flags = END_HEADERS)
+:status = 200
+grpc-encoding = gzip
+content-type = application/grpc
+```
+
+响应消息会发送单独的END_STREAM数据帧来说明结束响应的消息，即trailer
+
+```
+DATA
+<Length-Prefixed Message>
+```
+
+这个结束的消息帧还会包含一些头信息
+
+```
+HEADERS (flags = END_STREAM, END_HEADERS)
+grpc-status = 0
+grpc-message = xxx
+```
+
+最后来看下grpc中不同的通信模式下，流的通信方式。
+
+grpc中针对不同的使用场景有不同的通信模式，这个具体也可以参考开头所给的文章，这里不重复说明。
 
 
-## 参考资料
-* [详解varint编码原理](https://juejin.cn/post/6844903953327456263) 
+![rpc-steram.png](rpc-stream.png)
+
+## 小结
+文本对grpc的底层原理做了个基本的介绍，当然其通信细节远远不止于此，例如protocol buffers的编码细节这里也没有展开讲，对这方面感兴趣的可以查阅protocol buffers的官方文档。
+
+而grpc支持很多扩展功能，例如服务发现、负载均衡等，这些都属于应用层的技术，也可以自行去查看其源码。
