@@ -17,7 +17,7 @@ Black.Panther.Wakanda.Forever.2022.IMAX.2160p.DSNP.WEB-DL.DTS-HD.MA.TrueHD.7.1.A
 ## 文件名含义
 先来翻译下上面给出的示例的文件名：
 
-![file-name-example.png](content/posts/movie-file-name/file-name-example.png)
+![file-name-example.png](file-name-example.png)
 
 前两部分容易理解，我们从第三部分开始来详细解释。
 
