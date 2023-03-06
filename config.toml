@@ -125,6 +125,26 @@ languageName = "English"
     Twitter = "https://twitter.com/_seed__"
     Weibo = "https://weibo.com/u/2683344291"
 
+  [params.page]  
+    [params.page.comment]  
+      enable = true
+      [params.page.comment.giscus]
+        # 你可以参考官方文档来使用下列配置
+        enable = true
+        repo = "zhengweikeng/seed-blog"
+        repoId = "R_kgDOIxJRYg"
+        category = "Announcements"
+        categoryId = "DIC_kwDOIxJRYs4CUrOY"
+        # 为空时自动适配当前主题 i18n 配置
+        lang = ""
+        mapping = "pathname"
+        reactionsEnabled = "1"
+        emitMetadata = "0"
+        inputPosition = "bottom"
+        lazyLoading = false
+        lightTheme = "light"
+        darkTheme = "dark_dimmed"
+
 # Markup related configuration in Hugo
 [markup]
   # Syntax Highlighting (https://gohugo.io/content-management/syntax-highlighting)
