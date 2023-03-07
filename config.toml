@@ -53,6 +53,8 @@ languageName = "English"
   title = "Seed's blog"
   description = "Welcome to my blog."
 
+  
+
   # 页面头部导航栏配置
   [params.header]
     # 桌面端导航栏模式 ["fixed", "normal", "auto"]
