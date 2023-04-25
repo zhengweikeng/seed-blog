@@ -17,23 +17,18 @@ mac原生的terminal可玩性不高，故改用[Iterm2](https://iterm2.com/)。
 首先在默认的profile中配置开启status bar。位置：settings>Profiles>Default>session
 
 勾选开启**status bar enabled**，并配置你想要的status bar功能。
-
 ![iterm2_enable_status_bar](iterm2_enable_status_bar.png)
-
 ![iterm2_status_bar_config](iterm2_status_bar_config.png)
 
 调整status bar的出现位置为iterm2的底部
-
 ![iterm2_status_bar_pos_config](iterm2_status_bar_pos_config.png)
 
 效果如下：
-
 ![iterm2_status_bar_preview](iterm2_status_bar_preview.png)
 
 ### 主题
 
 为iterm2选择一个主题。官方提供了非常多的内置主题，在settings>Profiles>Default>Color Presets
-
 ![iterm2_theme_config](iterm2_theme_config.png)
 
 也可以选择第三方的主体，我使用了一个叫[hardhacker](https://github.com/hardhackerlabs/theme-iterm2)的主题。参考文档安装即可。
@@ -43,13 +38,10 @@ mac原生的terminal可玩性不高，故改用[Iterm2](https://iterm2.com/)。
 为了让terminal界面有更丰富的配色，对于一些特殊的字符能有明显的颜色提醒，我还配置了触发器。
 
 例如针对打印日志时，出现error的日志，用红色标明整行。对于info日志，用绿色提示关键字等等。效果如下：
-
 ![trigger_demo](trigger_demo.png)
 
 配置方法，在settings>Profiles>Default>Advanced处，编辑Triggers。
-
 ![iterm2_triggers_config](iterm2_triggers_config.png)
-
 ![iterm2_triggers_config_detail](iterm2_triggers_config_detail.png)
 
 ### 配置不同的Profile
@@ -70,41 +62,33 @@ ssh root@10.0.01
 ```
 
 成功免密登录即可配置iterm2。
-
 ![iterm2_auto_login_without_pwd](iterm2_auto_login_without_pwd.png)
 
 接下来即可在iterm2中快速使用这个profile，且会自动登录目标服务器。
-
 ![iterm2_auto_login_without_pwd_use](iterm2_auto_login_without_pwd_use.png)
 
 ##### 场景二：采用私钥登录
 
 如果目标服务器需要使用指定私钥（假设存放在本地的/root/cert/private.pem）来登录，则对应的iterm2配置如下：
-
 ![iterm2_auto_login_with_private_key](iterm2_auto_login_with_private_key.png)
 
 ##### 场景三：采用密码登录
 
 如果目标服务器需要使用指定的密码登录（假设密码为abcd123，用户为root），但是ssh不支持显示的密码指令，我们可以使用触发器来实现自动填入ssh密码。
-
 ![iterm2_auto_login_with_private_key_config](iterm2_auto_login_with_private_key_config.png)
 
 注意触发器配置密码的时候，需要加上`\r`，是回车的意思，这样ssh就会自动输入密码且完成回车确认。另外这里记得勾上触发器的instant。
 
 然后同理在iterm2参考场景一配置Command即可。
-
 ![iterm2_auto_login_without_pwd](iterm2_auto_login_without_pwd.png)
 
 #### 登录服务器后自动登录数据库
-
 假设我们希望登录服务器后，自动登录mysql数据库（例如数据库地址为192.168.10.1，用户名为demo，密码为abcDemo，端口为3306），这样我们不需要每次自己登录服务器后还要人工去登录。
 
 #### 场景一：直接登录数据库的方式
-
 ![iterm2_auto_login_db](iterm2_auto_login_db.png)
 
 #### 场景二：需要进入另一台服务器再登录数据库
-
 ![iterm2_auto_login_db_2](iterm2_auto_login_db_2.png)
 
 这里需要注意两点：
@@ -164,7 +148,6 @@ SPACESHIP_GOLANG_ASYNC=false
 ```
 
 看下最终效果：
-
 ![zsh_spaceship_preview](zsh_spaceship_preview.png)
 
 ### 插件
